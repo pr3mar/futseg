@@ -1,0 +1,176 @@
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# NOTE: uv.lock is intentionally NOT ignored. futseg ships as an application/CLI,
+# so the lockfile is committed to make `uv sync` reproducible across machines.
+
+# ---------------------------------------------------------------------------
+# Testing / linting / typing caches
+# ---------------------------------------------------------------------------
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.tox/
+.nox/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.cache
+nosetests.xml
+
+# ---------------------------------------------------------------------------
+# AI / assistant tooling
+#
+# Rationale: assistant chat histories and local session state routinely capture
+# whatever was on screen — file contents, paths, machine details, occasionally
+# credentials. None of it belongs in a public repo. Shared *configuration*
+# (CLAUDE.md, .claude/skills/) is deliberately kept tracked; only per-developer
+# state and transcripts are ignored.
+# ---------------------------------------------------------------------------
+
+# Claude Code — keep CLAUDE.md and .claude/skills/ tracked; ignore local state
+.claude/settings.local.json
+.claude/plans/
+.claude/todos/
+.claude/history/
+.claude/shell-snapshots/
+.claude/statsig/
+.claude/projects/
+.claude/hooks/*.local.*
+
+# Other assistants / editors
+.cursor/
+.cursorignore
+.cursorrules.local
+.windsurf/
+.aider*
+.continue/
+.cline/
+.roo/
+.gemini/
+.antigravity/
+.specstory/
+.codeium/
+.github/copilot-session*
+
+# Generic assistant scratch space
+.ai/
+.ai-scratch/
+*.ai-session.json
+
+# ---------------------------------------------------------------------------
+# JetBrains
+#
+# NOTE: .idea/ is deliberately NOT blanket-ignored — misc.xml, modules.xml and
+# vcs.xml are the shareable project definition and are tracked on purpose.
+# Only per-developer state below is ignored.
+# ---------------------------------------------------------------------------
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/dictionaries/
+.idea/shelf/
+.idea/httpRequests/
+.idea/dataSources/
+.idea/dataSources.local.xml
+.idea/sonarlint/
+*.iws
+
+# ---------------------------------------------------------------------------
+# Secrets / credentials — belt-and-braces alongside the anonymization hook
+# ---------------------------------------------------------------------------
+.env.*
+!.env.example
+*.pem
+*.key
+!**/public*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
+.netrc
+.hf_token
+.huggingface/
+
+# ---------------------------------------------------------------------------
+# Model weights & ML artifacts
+#
+# These are multi-GB and must never enter git history. Note especially that
+# ultralytics downloads checkpoints into the *current working directory* on
+# first run, so `yolo11*.pt` will otherwise appear at the repo root uninvited.
+# ---------------------------------------------------------------------------
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.bin
+*.gguf
+yolo*.pt
+sam*.pt
+models/
+weights/
+checkpoints/
+.cache/huggingface/
+
+# Pipeline inputs/outputs from local runs
+outputs/
+out/
+samples/
+*.out.png
+*.out.jpg
+
+# ---------------------------------------------------------------------------
+# Notebooks
+# ---------------------------------------------------------------------------
+.ipynb_checkpoints/
+*-checkpoint.ipynb
+
+# ---------------------------------------------------------------------------
+# OS noise
+# ---------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
