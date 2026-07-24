@@ -173,6 +173,29 @@ details, no machine/hardware specifics, no credentials. This repo is public.
   requires every PR to link one, and this work resolved none of #1–#10 — it reshaped four of them).
 - Note on git remotes: pushes cannot be made from the assistant's shell over SSH. The user's
   `id_ed25519` key is present and is offered to GitHub, but it is passphrase-protected and no
-  `ssh-agent` is reachable from a non-interactive shell (`SSH_AUTH_SOCK` unset), so the signature
-  cannot be completed. This is an environment limitation, not a key problem — SSH works normally
-  from the user's own terminal, and `origin` is left on SSH.
+  `ssh-agent` is reachable from a non-interactive shell (`SSH_AUTH_SOCK` unset, no TTY to prompt
+  on), so the signature cannot be completed. The Windows `ssh-agent` service is disabled (error
+  1058) and would not have helped regardless: `git` here resolves to Git Bash's `/usr/bin/ssh`,
+  which speaks `SSH_AUTH_SOCK`, while the Windows agent uses a named pipe. **Decision: `origin`
+  stays on HTTPS and `gh`'s credential helper handles auth** — chosen over a fixed-socket
+  `ssh-agent` because the agent approach leaves the key unlocked for anything that can reach the
+  socket, whereas the `gh` token is scoped and revocable. SSH remains fine from the user's own
+  terminal; this constraint applies to the assistant's shell only.
+- Revised `.claude/skills/github-issue-workflow/SKILL.md` with what this session exposed. The
+  workflow had three gaps that each only surface *after* you have started working:
+  - It assumed `origin/main` exists. On an empty repo there is nothing to branch from and no PR
+    base, so the workflow is unexecutable — and the only way out collides with its own hard rule.
+    Added a preconditions check, and wrote the empty-repo case into the excuse/reality table as a
+    *stop and ask*, explicitly not an exception, so the rule keeps its integrity.
+  - It assumed an issue always exists for the work. Added: create one first rather than opening a
+    PR without `Closes #<n>`.
+  - Step 5 told you to verify with `uv sync` / `uv run pytest`, impossible pre-scaffolding. Added:
+    say so explicitly in the PR rather than leaving Testing blank, since a blank section reads as
+    "verified".
+  Also added the HTTPS/SSH precondition, the anonymization hook's behaviour, `--body-file` over
+  inline `--body` (PR bodies contain backticks and code blocks that break shell quoting — this bit
+  once this session), and a reminder to fix the issue body when the work changes the design it
+  describes.
+  Committed onto the existing PR branch rather than a new PR: the skill file is *introduced* by
+  #12 and does not exist on `main`, so a separate PR would have to re-add it, and branching off the
+  PR branch would stack unmerged work for no benefit.
