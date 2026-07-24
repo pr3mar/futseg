@@ -8,13 +8,29 @@ in it, then apply an inpainting model to regenerate/replace everything **outside
 person mask (the background) while keeping the person(s) intact — chosen over "remove
 person" or "edit region on person" as alternative directions.
 
-Environment check: `uv` is already the package manager in use (the venv was created by
-`uv python`), and the target environment assumes a CUDA-capable GPU. This makes local
-diffusion-based inpainting fully practical — no need to fall back to a lightweight/CPU-only
-approach.
-
 Deliverables: (1) a `README.md` for the project, (2) the pipeline below, built as a CLI +
 importable library, using local open-source models only.
+
+## Platform
+
+futseg targets **Linux**, because that is where it runs: developer workstations and server
+environments. Full rationale in [`docs/design/2026-07-25-linux-first-platform.md`](docs/design/2026-07-25-linux-first-platform.md).
+
+| Platform | Status |
+|---|---|
+| Linux x86_64 (glibc) | Supported target. CUDA optional, auto-detected |
+| macOS | Developable: segmentation + composite backend. Diffusion on CPU, slowly |
+| WSL2 | The maintainer's development environment; identical to Linux from the code's view |
+| Windows native | **Not supported**, and documented as such |
+
+This is not incidental. PyPI's `torch` wheel **bundles CUDA on Linux x86_64 (527 MB) but is
+CPU-only on Windows (122 MB)** — every `nvidia-*` dependency is gated `platform_system == "Linux"`.
+Targeting Linux means plain `torch` from PyPI simply works, with no custom index, no platform
+markers, and no silently-CPU-only install to discover five milestones later.
+
+Consequences that shape the design below: device selection is resolved in exactly one place
+(`device.py`); nothing is ever written to the current working directory or the install directory
+(`paths.py`); `uv` is the package manager throughout.
 
 ## Quality bar, and the known gap
 
@@ -52,6 +68,8 @@ src/futseg/
   pipeline.py          # orchestrates segment -> mask derivation -> inpaint -> compose
   cli.py                # typer-based CLI entrypoint (futseg run/segment)
   io.py                 # image load/save helpers
+  device.py             # resolve_device(): the single cuda/cpu decision point
+  paths.py              # XDG-compliant cache resolver; keeps weights out of CWD
   segmentation/
     base.py             # Segmenter protocol: segment(image) -> HxW float32 alpha in [0,1]
     yolo.py              # YOLO11-seg, person class, instance union      (--quality fast)
@@ -153,13 +171,13 @@ accepting a parameter it would ignore.
 ## Milestones
 
 1. **Scaffolding** — flesh out `pyproject.toml` (deps below), `src/futseg` package
-   layout, `uv sync`-able dev environment, `ruff` for lint, `pytest` for tests. Pin the
-   `torch` CUDA index explicitly (see Dependencies) — a bare `torch` dependency does not
-   resolve to a CUDA build on all platforms.
+   layout, `uv sync`-able dev environment, `ruff` for lint, `pytest` for tests,
+   `.gitattributes` enforcing LF. Assert CUDA actually resolved rather than assuming it
+   (see Dependencies) — the failure being guarded against is silent.
 2. **Core abstractions + I/O** — `Segmenter`/`Inpainter` protocols (float alpha; no prompt
-   in the inpaint signature), `io.py`, and `masking.py` with the two-mask derivation above
-   as unit-testable pure functions (dilate/erode/feather on synthetic masks, no model
-   needed).
+   in the inpaint signature), `io.py`, `device.py` (`resolve_device()`), `paths.py` (cache
+   resolver), and `masking.py` with the two-mask derivation above as unit-testable pure
+   functions (dilate/erode/feather on synthetic masks, no model needed).
 3. **Segmentation: fast tier** — `yolo.py` implementing `Segmenter` with YOLO11-seg,
    person-class filtering, multi-instance union, `retina_masks=True`.
 4. **Segmentation: refined tier (default)** — `refined.py`: YOLO11 person detection →
@@ -175,15 +193,24 @@ accepting a parameter it would ignore.
    verified `to_kwargs` adapters for at least FLUX.2 [klein] and SDXL-inpaint. Wired as the
    default backend.
 7. **CLI** — `typer` app: `futseg run <image> --prompt "..." [--backend composite|diffusion]
-   [--quality fast|best] [--model <registry-key>] --out out.png`, plus `futseg segment`
-   (mask-only debug output, useful for inspecting the two derived masks).
+   [--quality fast|best] [--model <registry-key>] [--device auto|cuda|cpu]
+   [--weights-dir <path>] --out out.png`, plus `futseg segment` (mask-only debug output,
+   useful for inspecting the two derived masks).
 8. **Tests** — unit tests for masking/pipeline wiring with mocked `Segmenter`/`Inpainter`;
    a small number of `@pytest.mark.slow` integration tests that run real models, skipped
    by default.
 9. **README** — install (`uv sync`), quickstart CLI example, architecture overview (the
-   module list above), model/weight download notes, the per-model license table, hardware
-   notes (GPU recommended for the diffusion backend, composite backend works CPU-only), and
-   an honest statement of the hair/matting limitation from "Quality bar" above.
+   module list above), model/weight download notes, the per-model license table, the
+   platform contract and WSL2 development setup, hardware notes (GPU recommended for the
+   diffusion backend, composite backend works CPU-only), and an honest statement of the
+   hair/matting limitation from "Quality bar" above.
+10. **Docker image** — a runtime image for server use. Shape deliberately undecided until
+    the CLI exists and its mount/configuration needs are known; the one fixed constraint is
+    that **model weights are mounted, never baked in** (multi-GB, would make the image
+    undistributable). `paths.py` exists so the container has a single volume to mount.
+11. **CI (optional)** — GitHub Actions on `ubuntu-latest`, CPU only: `ruff check` plus the
+    fast test suite, with `@pytest.mark.slow` staying skipped. Deliberately last: there is
+    no value in wiring CI before there is something for it to run.
 
 Deferred/future (mention in README as roadmap, not built now):
 
@@ -199,21 +226,15 @@ Deferred/future (mention in README as roadmap, not built now):
 ## Dependencies (to be added to `pyproject.toml`)
 
 - `ultralytics` (YOLO11 detection + segmentation, and its SAM2 wrapper)
-- `torch` — **CUDA build requires an explicit index**; a bare dependency resolves to a
-  CPU-only wheel on some platforms. Shape (exact cu-version pinned at milestone 1):
-  ```toml
-  [[tool.uv.index]]
-  name = "pytorch-cu124"
-  url = "https://download.pytorch.org/whl/cu124"
-  explicit = true
-
-  [tool.uv.sources]
-  torch = [{ index = "pytorch-cu124" }]
-  ```
-  Must degrade to a CPU wheel on a machine without CUDA, so a clean checkout still syncs.
+- `torch` — **plain, from PyPI, with no custom index.** The Linux x86_64 wheel bundles CUDA, so
+  targeting Linux removes the need for `[[tool.uv.index]]` / `[tool.uv.sources]` entirely. Because
+  a CPU-only resolution would otherwise pass silently, milestone 1 asserts
+  `uv run python -c "import torch; assert torch.cuda.is_available()"`.
 - `diffusers`, `transformers`, `accelerate` (diffusion inpainting)
 - `bitsandbytes` — optional extra, only for the quantized FLUX.2 [dev] registry entry
-- `opencv-python-headless` (morphology + Gaussian feather in `masking.py`)
+- `opencv-python-headless` (morphology + Gaussian feather in `masking.py`) — the `-headless` build
+  specifically: the GUI build links `libGL`, which is absent from slim container images and
+  headless servers (`ImportError: libGL.so.1`).
 - `pillow`, `numpy`
 - `typer` (CLI)
 - dev: `pytest`, `ruff`

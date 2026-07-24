@@ -8,6 +8,13 @@ in place as understanding changes — keep it consistent, not just additive.
 ## Conventions
 
 - Package management: `uv` only (`uv sync`, `uv run ...`). No `pip install` / `poetry` / raw `venv`.
+- **Linux is the target platform.** Windows native is unsupported; the maintainer develops in WSL2
+  so dev == CI == prod. macOS is developable for segmentation and the composite backend only. See
+  `docs/design/2026-07-25-linux-first-platform.md`.
+- Device selection happens **only** in `device.py` (`resolve_device()`). Backends receive a resolved
+  `"cuda"` / `"cpu"` string and never probe for CUDA themselves.
+- Writable locations resolve **only** through `paths.py`. Nothing is written to the current working
+  directory or the package install directory; outputs go where `--out` says.
 - Two `Protocol` abstractions, `Segmenter` and `Inpainter` (see `PLAN.md`), keep segmentation and
   inpainting backends swappable. New backends implement one of these protocols rather than being
   special-cased into `pipeline.py`.
@@ -48,11 +55,11 @@ in place as understanding changes — keep it consistent, not just additive.
   cannot represent semi-transparent hair. The trimap for a future matting stage comes free from the
   existing dilate/erode band. Until it lands, the README must say so rather than overclaim — see
   `PLAN.md` "Quality bar, and the known gap".
-- **GitHub milestones 1–9 match `PLAN.md` one-to-one, but the issue numbering does not run in
-  order.** SAM2 refinement was added after the original eight issues were filed, so it holds the
-  highest issue number while sitting fourth in the sequence: milestones 1–9 map to issues
-  #2, #3, #4, **#10**, #5, #6, #7, #8, #9 respectively. `#1` is the unscheduled roadmap issue and
-  carries no milestone. Don't assume issue N corresponds to milestone N−1.
+- **GitHub milestones 1–11 match `PLAN.md` one-to-one, but the issue numbering does not run in
+  order.** Later additions hold higher issue numbers while sitting earlier in the sequence:
+  milestones 1–11 map to issues #2, #3, #4, **#10**, #5, #6, #7, #8, #9, #14, #15 respectively.
+  `#1` (roadmap) and `#13` (the Linux-first platform decision, which spans milestones) carry no
+  milestone. Don't assume issue N corresponds to milestone N−1.
 
 ## Gotchas
 
@@ -69,10 +76,20 @@ in place as understanding changes — keep it consistent, not just additive.
   1/4 stride (160×160 at `imgsz=640`), so on a 4000px-wide photo one mask pixel spans ~25 source
   pixels. Use `retina_masks=True` and a larger `imgsz` for the fast tier; this is the whole reason
   the default tier refines with SAM2.
-- **A bare `torch` dependency does not resolve to a CUDA build on every platform.** It needs an
-  explicit `[[tool.uv.index]]` pin to the PyTorch CUDA wheel index, and must still degrade to CPU
-  on machines without CUDA. Get this wrong and milestone 1 "succeeds" while milestone 6 is
-  mysteriously unusable.
+- **`torch` needs no custom index on Linux — and adding one is a smell.** The Linux x86_64 wheel
+  bundles CUDA (527 MB; the Windows wheel is 122 MB and CPU-only, with every `nvidia-*` dependency
+  gated `platform_system == "Linux"`). An earlier revision pinned `download.pytorch.org` purely to
+  rescue Windows. Because a CPU-only resolution fails *silently* — `uv sync` succeeds, `import
+  torch` works, tests pass — milestone 1 asserts `torch.cuda.is_available()` explicitly.
+- **`ultralytics` writes checkpoints into the current working directory**, which is actively hostile
+  in a container (read-only or ephemeral workdir). `paths.py` redirects it and `HF_HOME` to one
+  XDG-compliant cache dir, which also gives Docker a single volume to mount.
+- **Use `opencv-python-headless`, never `opencv-python`.** The GUI build links `libGL`, absent from
+  slim images and headless servers → `ImportError: libGL.so.1`.
+- **In WSL2, keep the repo on the Linux filesystem** (`~/code/futseg`), not `/mnt/c/`. drvfs I/O is
+  slow enough to hurt when torch is ~5 GB of small files and pytest walks the tree.
+- **`.gitattributes` forces LF.** Editing from Windows while running on Linux otherwise yields
+  `bad interpreter: /bin/bash^M` inside containers.
 - **Score mask quality with boundary IoU, not plain IoU.** Plain IoU is dominated by the torso and
   barely moves when the hair is wrong, making it useless as a signal for the thing this project
   actually cares about.
