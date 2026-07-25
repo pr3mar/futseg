@@ -43,21 +43,26 @@ What that means concretely:
 
 ## Project state
 
-Scaffolding stage: `pyproject.toml` and `.gitignore` only (`futseg`, Python >=3.12, no dependencies
-yet), no source code or tests yet. The intended architecture is fully specified in `PLAN.md` and
-tracked as GitHub issues/milestones on `pr3mar/futseg`. All issues are currently open/unstarted —
-issue #2 (Scaffolding) is next.
+Pre-implementation: docs and repo configuration only (`pyproject.toml` with no dependencies yet,
+`README.md`, `.gitignore`, `.gitattributes`, `PLAN.md`, `docs/`). No source code or tests yet. The
+intended architecture is fully specified in `PLAN.md`, with the platform contract in
+`docs/design/2026-07-25-linux-first-platform.md`, and tracked as GitHub issues/milestones on
+`pr3mar/futseg`. Issue #2 (Scaffolding) is next — and it is the first one that must be done on
+Linux/WSL2 rather than Windows.
 
-GitHub milestones 1–9 match `PLAN.md`'s milestones exactly, one issue each. **The mapping is not
-`issue N → milestone N−1`** — SAM2 refinement was added later, so it carries the highest issue
-number while sitting fourth in the sequence:
+GitHub milestones 1–11 match `PLAN.md`'s milestones exactly, one issue each. **The mapping does not
+run in issue order** — later additions carry higher issue numbers while sitting earlier in the
+sequence:
 
-| Milestone | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
-|---|---|---|---|---|---|---|---|---|---|
-| Issue | #2 | #3 | #4 | **#10** | #5 | #6 | #7 | #8 | #9 |
+| Milestone | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Issue | #2 | #3 | #4 | **#10** | #5 | #6 | #7 | #8 | #9 | #14 | #15 |
 
-`#1` is the unscheduled roadmap issue (alpha matting, tiling/SR, batch/video, REST API) and has no
-milestone.
+Milestones 10 (Docker) and 11 (CI) are deliberately last and deliberately underspecified — their
+shape depends on the CLI existing first.
+
+Issues without a milestone: `#1` (unscheduled roadmap — alpha matting, tiling/SR, batch/video, REST
+API) and `#13` (the Linux-first platform decision, which spans milestones rather than being one).
 
 When code lands, update this file with real build/lint/test commands and keep the architecture
 section below in sync with what's actually implemented (mark deviations from the plan here, not
@@ -70,6 +75,8 @@ src/futseg/
   pipeline.py          # segment -> mask derivation -> inpaint -> compose
   cli.py                # typer CLI: `futseg run`, `futseg segment`
   io.py                 # image load/save helpers
+  device.py             # resolve_device(): the single cuda/cpu decision point
+  paths.py              # XDG cache resolver; keeps weights out of CWD/install dir
   masking.py            # alpha -> (inpaint_mask, composite_alpha); dilate/erode/feather
   segmentation/
     base.py             # Segmenter protocol: segment(image) -> HxW float32 alpha in [0,1]
@@ -110,10 +117,20 @@ tests/                   # unit tests with mocked Segmenter/Inpainter; @pytest.m
   assumptions in code, config, or docs. Before opening a PR, verify a fresh `uv sync` + `uv run
   pytest` succeeds from a clean checkout.
 - `ruff` for lint, `pytest` for tests (target config once milestone 1/#2 lands).
-- **A bare `torch` dependency does not resolve to a CUDA build on every platform.** It needs an
-  explicit `[[tool.uv.index]]` pin to the PyTorch CUDA wheel index, and must still degrade to a CPU
-  wheel on a machine without CUDA so a clean checkout syncs. Getting this wrong makes milestone 1
-  appear to succeed and milestone 6 mysteriously unusable — see `PLAN.md` "Dependencies".
+- **Linux is the target platform; Windows native is not supported.** Development happens in WSL2,
+  so dev == CI == prod. macOS is developable for segmentation and the composite backend only. Full
+  contract in `docs/design/2026-07-25-linux-first-platform.md`.
+- **`torch` is a plain PyPI dependency — do not add a custom index.** The Linux x86_64 wheel bundles
+  CUDA (527 MB, vs 122 MB CPU-only on Windows; every `nvidia-*` dep is gated
+  `platform_system == "Linux"`). An earlier revision of this plan pinned
+  `download.pytorch.org` to rescue Windows; targeting Linux deleted that requirement. If you find
+  yourself reaching for `[[tool.uv.index]]`, check whether you are solving a Windows problem the
+  project no longer has.
+- **Nothing writes to the current working directory or the install directory.** `ultralytics`
+  downloads checkpoints into CWD by default, which breaks on read-only and ephemeral container
+  filesystems; `paths.py` redirects it and `HF_HOME` to one XDG cache dir.
+- **Never probe for CUDA outside `device.py`.** Backends receive a resolved device string so the
+  policy stays in one testable place.
 
 ## Working GitHub issues
 

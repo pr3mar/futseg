@@ -199,3 +199,46 @@ details, no machine/hardware specifics, no credentials. This repo is public.
   Committed onto the existing PR branch rather than a new PR: the skill file is *introduced* by
   #12 and does not exist on `main`, so a separate PR would have to re-add it, and branching off the
   PR branch would stack unmerged work for no benefit.
+
+## 2026-07-25
+
+- **Adopted a Linux-first platform strategy (#13).** Design spec:
+  `docs/design/2026-07-25-linux-first-platform.md`.
+  The trigger was verifying, rather than recalling, how `torch` ships: the PyPI wheel is 527 MB with
+  CUDA bundled on Linux x86_64 and 122 MB CPU-only on Windows, with every `nvidia-*` dependency
+  gated `platform_system == "Linux"` (checked against the PyPI JSON API for torch 2.13.0). The
+  previously-planned `[[tool.uv.index]]` pin existed *only* to rescue Windows, and its failure mode
+  was silent — `uv sync` succeeds, `import torch` works, tests pass, and the problem surfaces
+  several milestones later at the diffusion backend.
+  Decisions:
+  - **Windows native is unsupported; development moves to WSL2**, so dev == CI == prod and there is
+    one code path. Chosen over "Linux-first, Windows best-effort" because the latter keeps two
+    dependency paths and an untested platform alive permanently for one developer's convenience.
+    macOS stays developable for segmentation and the composite backend.
+  - **No custom package index.** The `[[tool.uv.index]]` / `[tool.uv.sources]` pin is deleted, not
+    documented. Targeting Linux removed the requirement rather than working around it.
+  - **No MPS backend.** `diffusers` on MPS has real dtype/unsupported-op gaps and there is no Mac
+    available to test on; shipping an unverifiable platform claim is worse than scoping it out.
+    One-line addition later if a contributor with a Mac can test it.
+  - **Device policy lives only in `device.py`.** `resolve_device()` returns `cuda`/`cpu`; backends
+    take a resolved string and never probe. Keeps the policy in one testable place and lets tests
+    pass a string instead of mocking torch internals. The `torch` import is lazy so `--help` and
+    argument errors don't pay for it.
+  - **`paths.py` owns every writable location** (`--weights-dir` → `$FUTSEG_CACHE_DIR` →
+    `$XDG_CACHE_HOME/futseg` → `~/.cache/futseg`). `ultralytics` otherwise downloads checkpoints
+    into the *current working directory*, which is actively hostile in a container — read-only or
+    ephemeral workdir — and it gives Docker a single volume to mount.
+  - **`.gitattributes` forces LF.** Editing from Windows while running on Linux yields
+    `bad interpreter: /bin/bash^M` in containers. Not hypothetical: every commit in the preceding
+    session emitted `LF will be replaced by CRLF` warnings.
+  - **Docker (milestone 10) and CI (milestone 11) added at the end, deliberately underspecified.**
+    Designing a container around a CLI that does not exist yet produces a Dockerfile that fights the
+    tool. Only one constraint is fixed now: weights are mounted, never baked into the image.
+  - Recorded a WSL2 gotcha for setup: clone onto the Linux filesystem, not `/mnt/c/`, or drvfs I/O
+    makes torch's ~5 GB of small files painful.
+  Backlog reconciled: milestones 10 and 11 created with issues #14 and #15; issues #2, #3, #6, #7
+  and #9 updated for the new modules, flags and platform contract.
+- Deviated from the `superpowers:brainstorming` skill's default spec location
+  (`docs/superpowers/specs/`) in favour of `docs/design/`. Reason: the default bakes a tooling name
+  into a public project's documentation tree, which is noise for anyone reading the repo. Flagged
+  rather than silently changed.

@@ -1,0 +1,15 @@
+# futseg targets Linux; development happens on Windows via WSL2.
+# Force LF in the working tree so files edited by Windows tooling do not reach a
+# container as CRLF — a CRLF entrypoint fails as `bad interpreter: /bin/bash^M`.
+* text=auto eol=lf
+
+# Never normalize binaries.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.pt binary
+*.pth binary
+*.ckpt binary
+*.safetensors binary
+*.onnx binary
