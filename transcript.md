@@ -302,3 +302,16 @@ details, no machine/hardware specifics, no credentials. This repo is public.
     briefly looked like a hardware fault. It was the script's own bug — `256**3` overflows fp16's
     ~65504 ceiling, so the accumulation saturated. Reducing in fp32 fixed it. Recorded in
     `docs/wiki.md` because the same trap will reappear in half-precision diffusion work.
+  - **Added a `Makefile` as the developer entry point.** Not ergonomics — a correctness guard. The
+    `UV_PROJECT_ENVIRONMENT` export added to `~/.bashrc` turned out not to hold: Ubuntu's `.bashrc`
+    returns at its interactive guard before reaching an appended line, so non-interactive shells
+    never see it, and a terminal opened before the edit never had it either. A `uv run` in such a
+    shell does not warn about the missing variable; it silently built a 4.1 GB `.venv` in-tree on
+    drvfs, with hardlinking disabled across filesystems, and removed whatever `.venv` was already
+    there — the exact Windows/Linux collision #18 documented, reproduced by accident.
+    The `Makefile` sets the variable itself, so the environment is a property of the command rather
+    than the shell. Its `guard` prerequisite refuses to run off Linux, checks `uv` is on `PATH`, and
+    warns when a stray in-tree `.venv` exists; `clean-venv` removes only that stray and never the
+    real environment.
+    Rejected: `direnv` (correct, but adds a per-machine install to the setup path for one variable)
+    and moving the source into WSL2 (already decided against in #18 for the IDE).

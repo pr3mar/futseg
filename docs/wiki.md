@@ -8,6 +8,10 @@ in place as understanding changes — keep it consistent, not just additive.
 ## Conventions
 
 - Package management: `uv` only (`uv sync`, `uv run ...`). No `pip install` / `poetry` / raw `venv`.
+- **Drive development through `make`** (`make help`, `sync`, `lint`, `test`, `check`, `cuda`). The
+  `Makefile` exports `UV_PROJECT_ENVIRONMENT` itself, so the environment is a property of the
+  command rather than of the shell. Calling `uv` directly is not wrong, but it only works in a shell
+  that has the variable — see the gotcha below.
 - Packaging: `hatchling` with a `src/` layout (`src/futseg`). Boring on purpose — any PEP 517
   frontend builds it, and `src/` makes tests import the installed package rather than the working
   tree.
@@ -112,6 +116,12 @@ in place as understanding changes — keep it consistent, not just additive.
   and that weight is the environment, not the source. Two reasons, not one: a single in-tree
   `.venv/` shared by a Windows and a Linux interpreter also lets `uv sync` from either side silently
   overwrite the other's layout (`Scripts/` vs `bin/`).
+- **An `~/.bashrc` export is not a reliable way to carry `UV_PROJECT_ENVIRONMENT`.** Ubuntu's
+  `.bashrc` returns at its interactive guard before reaching anything appended to the end, so
+  non-interactive shells never see it; neither does a terminal opened before the line was added, nor
+  an IDE run configuration. When uv does not know where the environment belongs it does not warn —
+  it builds `.venv` in-tree on drvfs, which cost 4 GB and a full no-hardlink copy once already. The
+  `Makefile` exists to make this impossible; prefer `make <target>` over a bare `uv` call.
 - **`.gitattributes` forces LF.** Editing from Windows while running on Linux otherwise yields
   `bad interpreter: /bin/bash^M` inside containers.
 - **Score mask quality with boundary IoU, not plain IoU.** Plain IoU is dominated by the torso and
