@@ -1,0 +1,35 @@
+# The build context only needs pyproject.toml and uv.lock; everything else is
+# bind-mounted at run time. Keeping the context small keeps rebuilds fast.
+
+.git
+.github
+.idea
+.claude
+
+# Environments (a host-built venv must never reach the image)
+.venv
+env/
+venv/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Model weights: multi-GB, mounted at /cache, never baked in
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.bin
+*.gguf
+models/
+weights/
+checkpoints/
+
+# Local run artefacts
+outputs/
+out/
+samples/

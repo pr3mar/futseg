@@ -43,12 +43,14 @@ What that means concretely:
 
 ## Project state
 
-Pre-implementation: docs and repo configuration only (`pyproject.toml` with no dependencies yet,
-`README.md`, `.gitignore`, `.gitattributes`, `PLAN.md`, `docs/`). No source code or tests yet. The
-intended architecture is fully specified in `PLAN.md`, with the platform contract in
-`docs/design/2026-07-25-linux-first-platform.md`, and tracked as GitHub issues/milestones on
-`pr3mar/futseg`. Issue #2 (Scaffolding) is next — and it is the first one that must be done on
-Linux/WSL2 rather than Windows.
+Scaffolding landed (#2/#19): dependencies, `uv.lock`, the `src/futseg` module skeleton, `tests/`,
+and `ruff`/`pytest` configuration. Every module under `src/futseg` is still a docstring — there is
+no behaviour yet. The intended architecture is specified in `PLAN.md`, with the platform contract in
+`docs/design/2026-07-25-container-first-development.md`, and tracked as GitHub issues/milestones on
+`pr3mar/futseg`. Issue #3 (core abstractions: protocols, `io.py`, `masking.py`) is next.
+
+Commands: `make build` once, then `make check` (lint + tests), `make shell`, `make cuda`. All run
+in the container.
 
 GitHub milestones 1–11 match `PLAN.md`'s milestones exactly, one issue each. **The mapping does not
 run in issue order** — later additions carry higher issue numbers while sitting earlier in the
@@ -58,11 +60,14 @@ sequence:
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Issue | #2 | #3 | #4 | **#10** | #5 | #6 | #7 | #8 | #9 | #14 | #15 |
 
-Milestones 10 (Docker) and 11 (CI) are deliberately last and deliberately underspecified — their
-shape depends on the CLI existing first.
+Milestone 11 (CI) is deliberately last and deliberately underspecified — its shape depends on the
+CLI existing first. Milestone 10 (#14) still holds the **runtime/distribution** image: weights
+mounted not baked, no source mount, minimal surface. It is a different artefact from the **dev**
+container delivered by #20, which was pulled forward ahead of the plan by the project owner.
 
 Issues without a milestone: `#1` (unscheduled roadmap — alpha matting, tiling/SR, batch/video, REST
-API) and `#13` (the Linux-first platform decision, which spans milestones rather than being one).
+API), `#13` (the Linux-first platform decision) and `#20` (the dev container that superseded it) —
+all three span milestones rather than being one.
 
 When code lands, update this file with real build/lint/test commands and keep the architecture
 section below in sync with what's actually implemented (mark deviations from the plan here, not
@@ -111,15 +116,22 @@ tests/                   # unit tests with mocked Segmenter/Inpainter; @pytest.m
 
 ## Environment & portability
 
+- **All development and testing happens inside the dev container.** `make build` once, then
+  `make shell` / `test` / `lint` / `check` / `cuda`. There is no host virtualenv and no host Python;
+  the only host requirement is docker with GPU support. Full contract in
+  `docs/design/2026-07-25-container-first-development.md`.
 - Python >=3.12, managed with `uv` (`uv sync`, `uv run ...`) only — no system Python, pip, poetry,
-  or raw venv assumptions.
+  or raw venv assumptions. The interpreter is pinned via `UV_PYTHON` in the image, not inherited
+  from the base distro.
+- **The virtualenv lives at `/opt/venv`, outside the bind-mounted source.** A `.venv` appearing in
+  the project root means something ran uv on the host; delete it and use the `make` target.
 - Must stay installable/portable on other machines: no hardcoded local paths, no machine-specific
-  assumptions in code, config, or docs. Before opening a PR, verify a fresh `uv sync` + `uv run
-  pytest` succeeds from a clean checkout.
-- `ruff` for lint, `pytest` for tests (target config once milestone 1/#2 lands).
-- **Linux is the target platform; Windows native is not supported.** Development happens in WSL2,
-  so dev == CI == prod. macOS is developable for segmentation and the composite backend only. Full
-  contract in `docs/design/2026-07-25-linux-first-platform.md`.
+  assumptions in code, config, or docs. Before opening a PR, verify `make check` succeeds from a
+  clean checkout.
+- `ruff` for lint, `pytest` for tests, both configured in `pyproject.toml`.
+- **Linux is the target platform; Windows native is not supported.** The container makes
+  dev == CI == prod one image. macOS is developable outside the container for segmentation and the
+  composite backend only.
 - **`torch` is a plain PyPI dependency — do not add a custom index.** The Linux x86_64 wheel bundles
   CUDA (527 MB, vs 122 MB CPU-only on Windows; every `nvidia-*` dep is gated
   `platform_system == "Linux"`). An earlier revision of this plan pinned

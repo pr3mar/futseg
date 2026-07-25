@@ -1,0 +1,28 @@
+name: futseg
+
+services:
+  dev:
+    build:
+      context: .
+      args:
+        UBUNTU_VERSION: ${UBUNTU_VERSION:-26.04}
+    image: futseg-dev
+    working_dir: /workspace
+    # GPU passthrough. The image carries no CUDA toolkit; the runtime injects the
+    # host driver and torch's bundled wheels supply the rest.
+    gpus: all
+    volumes:
+      # Source is bind-mounted rather than copied: edits on the host are visible
+      # immediately, and the image stays independent of the working tree.
+      - .:/workspace
+      # Everything cacheable: model weights, HF downloads, and -- because
+      # XDG_CACHE_HOME points here -- uv's wheel cache at /cache/uv. A named
+      # volume, so multi-GB downloads survive rebuilds and never land in the
+      # image or the work tree. All of it is reconstructible; `make clean-cache`
+      # deletes the lot.
+      - futseg-cache:/cache
+    stdin_open: true
+    tty: true
+
+volumes:
+  futseg-cache:

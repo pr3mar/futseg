@@ -315,3 +315,44 @@ details, no machine/hardware specifics, no credentials. This repo is public.
     real environment.
     Rejected: `direnv` (correct, but adds a per-machine install to the setup path for one variable)
     and moving the source into WSL2 (already decided against in #18 for the IDE).
+- **Moved development into a GPU-enabled container (#20).** This reverses a recorded deferral: both
+  `CLAUDE.md` and the Linux-first design doc placed Docker at milestone 10 (#14), "deliberately last
+  and deliberately underspecified — their shape depends on the CLI existing first". The reversal was
+  the project owner's call, taken after the WSL2 arrangement failed twice in one session, and is
+  recorded here rather than left as a silent disagreement between the repo and its own docs.
+  Trigger: the `UV_PROJECT_ENVIRONMENT` export in `~/.bashrc` did not hold (Ubuntu's `.bashrc`
+  returns at its interactive guard before an appended line), so `uv run` in an ordinary terminal
+  silently built a 4.1 GB `.venv` in-tree on drvfs and removed the one already there. The Makefile
+  guard added hours earlier narrowed the window but could not close it, because the IDE's uv
+  integration invokes uv directly.
+  Decisions:
+  - **The container is the environment.** No host virtualenv, no host Python, nothing to activate.
+    The class of bug behind both incidents — correctness depending on unverified host state — is
+    removed rather than guarded against.
+  - **Base is plain `ubuntu:26.04`, not `nvidia/cuda`.** torch's wheels bundle the CUDA runtime and
+    the container runtime injects the host driver, so a CUDA base would ship a second copy of
+    multi-GB libraries. Verified before committing to it: `nvidia-smi` runs in a stock `ubuntu:26.04`
+    container under `--gpus all`.
+  - **Python pinned through uv (`UV_PYTHON=3.12`), not inherited from the distro**, so bumping the
+    base OS cannot move the interpreter out from under `uv.lock` and change wheel selection for
+    every compiled dependency.
+  - **Virtualenv at `/opt/venv`, outside the bind mount.** An in-tree `.venv` inside a bind mount is
+    written back to the host, which is the same collision in a new costume.
+  - **The Linux-first design doc was deleted rather than kept with a "superseded" header.** The
+    owner chose a clean end state; the file remains in git history, and its surviving decisions
+    (no custom torch index, the opencv-python override, XDG cache paths, LF endings, device.py as
+    the only CUDA probe) are restated in the new document so it stands alone.
+  - **#14 is not superseded.** The runtime/distribution image is a different artefact: no source
+    mount, weights mounted not baked, minimal surface.
+  - **Where the working tree lives is deliberately still open**, to be decided once bind-mount I/O
+    cost can be measured rather than guessed.
+  Measured after the first build, both recorded in `docs/wiki.md`:
+  - `docker images` reported **17.8 GB** for the image where `docker image inspect` reports
+    **5.71 GB** — buildkit's attestation and manifest-list entries get counted by the former. The
+    real content is ~5.4 GB of virtualenv (2.7 GB `nvidia`, 1.2 GB `torch`, 0.7 GB `triton`), which
+    is close to the floor for a CUDA-capable torch environment, so no size work was warranted. The
+    inflated figure nearly triggered an unnecessary optimisation pass.
+  - `XDG_CACHE_HOME=/cache` also relocates **uv's wheel cache** into the named volume (5.2 GB at
+    `/cache/uv`), duplicating wheels already installed in the image. Accepted rather than split into
+    a second volume: both are caches, both reconstructible, and one `make clean-cache` is easier to
+    reason about than two.
