@@ -1,5 +1,71 @@
 [project]
 name = "futseg"
 version = "0.1.0"
+description = "Person segmentation and prompt-driven background replacement"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    # torch is a plain PyPI dependency on purpose: the Linux x86_64 wheel bundles
+    # CUDA. Adding [[tool.uv.index]] here would be solving a Windows problem this
+    # project no longer has (see docs/design/2026-07-25-linux-first-platform.md).
+    # The floor keeps us on wheels carrying kernels for current GPU architectures.
+    "torch>=2.13",
+    "ultralytics",
+    "diffusers",
+    "transformers",
+    "accelerate",
+    # -headless specifically: the GUI build links libGL, which is absent from slim
+    # container images and headless servers (ImportError: libGL.so.1).
+    "opencv-python-headless",
+    "pillow",
+    # numpy 2.x: staying below it puts opencv and torch on opposite sides of the
+    # ABI split.
+    "numpy>=2",
+    "typer",
+]
+
+[project.optional-dependencies]
+# Only needed by the quantized FLUX.2 [dev] registry entry (#6).
+quant = ["bitsandbytes"]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[tool.uv]
+# `ultralytics` depends on `opencv-python` — the GUI build. Declaring
+# `opencv-python-headless` above does not displace it: both distributions own the
+# same `cv2/` directory, so which one wins is install-order dependent rather than
+# reproducible, and the GUI build drops ~70 MB of Qt5 shared objects into the
+# environment and therefore into any image built from it. An unsatisfiable marker
+# drops the transitive requirement; the headless build provides `cv2` for both.
+override-dependencies = ["opencv-python; sys_platform == 'never'"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/futseg"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "slow: exercises real model weights; deselect with -m 'not slow'",
+]

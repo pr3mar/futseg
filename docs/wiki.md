@@ -8,6 +8,15 @@ in place as understanding changes — keep it consistent, not just additive.
 ## Conventions
 
 - Package management: `uv` only (`uv sync`, `uv run ...`). No `pip install` / `poetry` / raw `venv`.
+- **Drive development through `make`** (`make help`, `sync`, `lint`, `test`, `check`, `cuda`). The
+  `Makefile` exports `UV_PROJECT_ENVIRONMENT` itself, so the environment is a property of the
+  command rather than of the shell. Calling `uv` directly is not wrong, but it only works in a shell
+  that has the variable — see the gotcha below.
+- Packaging: `hatchling` with a `src/` layout (`src/futseg`). Boring on purpose — any PEP 517
+  frontend builds it, and `src/` makes tests import the installed package rather than the working
+  tree.
+- `ruff` and `pytest` are configured in `pyproject.toml`, not in separate files. `ruff`: py312,
+  line-length 100, rules `E,F,I,UP,B`. `pytest`: `testpaths = ["tests"]`, `slow` marker registered.
 - **Linux is the target platform.** Windows native is unsupported; the maintainer develops in WSL2
   so dev == CI == prod. macOS is developable for segmentation and the composite backend only. See
   `docs/design/2026-07-25-linux-first-platform.md`.
@@ -80,17 +89,39 @@ in place as understanding changes — keep it consistent, not just additive.
   bundles CUDA (527 MB; the Windows wheel is 122 MB and CPU-only, with every `nvidia-*` dependency
   gated `platform_system == "Linux"`). An earlier revision pinned `download.pytorch.org` purely to
   rescue Windows. Because a CPU-only resolution fails *silently* — `uv sync` succeeds, `import
-  torch` works, tests pass — milestone 1 asserts `torch.cuda.is_available()` explicitly.
+  torch` works, tests pass — milestone 1 asserts CUDA explicitly.
+- **`torch.cuda.is_available()` alone is not proof CUDA works.** It returns `True` on a wheel that
+  carries no kernels for the installed GPU architecture; that failure surfaces only when a real op
+  runs, which is the same silent-until-late shape the index rule above guards against. Run
+  `uv run python scripts/cuda_check.py`: it prints the wheel's compiled arch list against the
+  device's compute capability and then does real work (fp32 matmul checked against CPU, fp16 matmul,
+  cuDNN conv). Exit code 0 means usable. Diagnostic only — it needs a GPU, so it is not in the test
+  suite.
+- **Summing an fp16 tensor can report `inf` and look like a GPU fault.** `256**3 = 16777216`
+  overflows fp16's ~65504 ceiling, so half-precision accumulation saturates. Cast to fp32 before
+  reducing. Cost an unnecessary debugging detour while writing `scripts/cuda_check.py`.
 - **`ultralytics` writes checkpoints into the current working directory**, which is actively hostile
   in a container (read-only or ephemeral workdir). `paths.py` redirects it and `HF_HOME` to one
   XDG-compliant cache dir, which also gives Docker a single volume to mount.
 - **Use `opencv-python-headless`, never `opencv-python`.** The GUI build links `libGL`, absent from
-  slim images and headless servers → `ImportError: libGL.so.1`.
+  slim images and headless servers → `ImportError: libGL.so.1`. **Declaring the headless build is
+  not enough**: `ultralytics` depends on `opencv-python` transitively, and both distributions own
+  the same `cv2/` directory, so the second one installed overwrites the first's `RECORD` — which of
+  them you get is install-order dependent, and uninstalling either deletes the shared `cv2/` out
+  from under the other. `pyproject.toml` neutralises the transitive requirement with
+  `[tool.uv] override-dependencies = ["opencv-python; sys_platform == 'never'"]`. If `cv2` ever
+  goes missing after a dependency change, recreate the venv rather than reinstalling on top.
 - **In WSL2 the source is on `/mnt/c/`, but the venv is not.** Set
   `UV_PROJECT_ENVIRONMENT=$HOME/.venvs/futseg`. drvfs I/O hurts when torch is ~5 GB of small files,
   and that weight is the environment, not the source. Two reasons, not one: a single in-tree
   `.venv/` shared by a Windows and a Linux interpreter also lets `uv sync` from either side silently
   overwrite the other's layout (`Scripts/` vs `bin/`).
+- **An `~/.bashrc` export is not a reliable way to carry `UV_PROJECT_ENVIRONMENT`.** Ubuntu's
+  `.bashrc` returns at its interactive guard before reaching anything appended to the end, so
+  non-interactive shells never see it; neither does a terminal opened before the line was added, nor
+  an IDE run configuration. When uv does not know where the environment belongs it does not warn —
+  it builds `.venv` in-tree on drvfs, which cost 4 GB and a full no-hardlink copy once already. The
+  `Makefile` exists to make this impossible; prefer `make <target>` over a bare `uv` call.
 - **`.gitattributes` forces LF.** Editing from Windows while running on Linux otherwise yields
   `bad interpreter: /bin/bash^M` inside containers.
 - **Score mask quality with boundary IoU, not plain IoU.** Plain IoU is dominated by the torso and
