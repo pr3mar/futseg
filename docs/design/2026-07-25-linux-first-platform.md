@@ -141,10 +141,26 @@ nonsense the first time. Every commit during the session that produced this docu
 
 ### Development environment
 
-The repository must live on the **WSL2 Linux filesystem** (`~/code/futseg`), not under `/mnt/c/`.
+The source tree lives on the Windows filesystem and is reached from WSL2 through `/mnt/c/`, because
+it is simultaneously a JetBrains project opened natively on Windows. The **virtualenv does not**:
+
+```bash
+export UV_PROJECT_ENVIRONMENT="$HOME/.venvs/futseg"
+```
+
 Cross-filesystem access through drvfs is slow enough to matter when torch is roughly 5 GB of small
-files and pytest walks the tree; file watching and permissions also behave better natively. This
-implies a fresh clone inside WSL2 rather than reusing an existing Windows checkout.
+files — but that cost is almost entirely the environment, not the ~200 KB of tracked source pytest
+walks. Redirecting only the environment puts the fast path where it actually pays and leaves the
+IDE setup alone.
+
+The split is a correctness requirement as much as a performance one. A single in-tree `.venv/`
+shared by a Windows and a Linux interpreter is a collision: `uv sync` from either side overwrites
+the other's layout (`Scripts/` vs `bin/`) with no warning and no error. Keeping the Linux
+environment outside the work tree removes the possibility rather than documenting the hazard.
+
+Accepted tradeoff: `inotify` does not propagate across drvfs, so a watcher running *inside* WSL2
+will not see edits made on the Windows side. The IDE is unaffected — it watches the Windows
+filesystem natively. Nothing in the toolchain watches files today; revisit if one enters the stack.
 
 ## Deferred
 
