@@ -242,3 +242,20 @@ details, no machine/hardware specifics, no credentials. This repo is public.
   (`docs/superpowers/specs/`) in favour of `docs/design/`. Reason: the default bakes a tooling name
   into a public project's documentation tree, which is noise for anyone reading the repo. Flagged
   rather than silently changed.
+- **Revised the repo-location rule from #16 (#17).** The Linux-first spec required the repository to
+  live on the WSL2 Linux filesystem and an explicit fresh clone rather than reuse of an existing
+  Windows checkout. That conflicted with how the project is actually developed: the working copy is
+  a JetBrains project on the Windows filesystem, reached from WSL2 through `/mnt/c/`. The rule is
+  superseded; its rationale is not — the drvfs cost is real, but the ~5 GB virtualenv pays it, not
+  the ~200 KB of tracked source.
+  Decisions:
+  - **Source on `/mnt/c/`, virtualenv on the Linux filesystem** via
+    `UV_PROJECT_ENVIRONMENT=$HOME/.venvs/futseg`. Chosen over relocating the source, which breaks
+    the IDE setup to avoid a cost that is not actually in the source tree, and over accepting drvfs
+    for everything, which pays the 5 GB penalty the original rule correctly identified.
+  - **The split is a correctness fix, not only a performance one.** One in-tree `.venv/` shared by a
+    Windows and a Linux interpreter collides: `uv sync` from either side overwrites the other's
+    layout (`Scripts/` vs `bin/`) with no warning. The original text did not mention this.
+  - The `~/code/futseg` gotcha recorded earlier on this date under #13 is superseded by this entry.
+    `docs/wiki.md` and the design spec were corrected in place; the earlier entry stands as history,
+    since this log is append-only.

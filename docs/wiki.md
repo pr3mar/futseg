@@ -86,8 +86,11 @@ in place as understanding changes — keep it consistent, not just additive.
   XDG-compliant cache dir, which also gives Docker a single volume to mount.
 - **Use `opencv-python-headless`, never `opencv-python`.** The GUI build links `libGL`, absent from
   slim images and headless servers → `ImportError: libGL.so.1`.
-- **In WSL2, keep the repo on the Linux filesystem** (`~/code/futseg`), not `/mnt/c/`. drvfs I/O is
-  slow enough to hurt when torch is ~5 GB of small files and pytest walks the tree.
+- **In WSL2 the source is on `/mnt/c/`, but the venv is not.** Set
+  `UV_PROJECT_ENVIRONMENT=$HOME/.venvs/futseg`. drvfs I/O hurts when torch is ~5 GB of small files,
+  and that weight is the environment, not the source. Two reasons, not one: a single in-tree
+  `.venv/` shared by a Windows and a Linux interpreter also lets `uv sync` from either side silently
+  overwrite the other's layout (`Scripts/` vs `bin/`).
 - **`.gitattributes` forces LF.** Editing from Windows while running on Linux otherwise yields
   `bad interpreter: /bin/bash^M` inside containers.
 - **Score mask quality with boundary IoU, not plain IoU.** Plain IoU is dominated by the torso and
