@@ -44,11 +44,23 @@ RUN mkdir -p /cache
 
 WORKDIR /workspace
 
-# Dependency layer, cached independently of source edits. --no-install-project
-# because the source arrives as a bind mount at run time rather than a COPY;
-# `uv run` installs the project itself from the mount on first use.
+# Dependency layer, cached independently of source edits.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project
+
+# Then the project itself, so that a plain `/opt/venv/bin/python` can import
+# futseg without going through `uv run`. This matters for anything that invokes
+# the interpreter directly -- an IDE's remote interpreter, a debugger, a profiler
+# -- none of which know about uv.
+#
+# The install is editable, recording a path to /workspace/src. At run time the
+# bind mount supplies that directory, so the source copied here is build-time
+# scaffolding that the mount replaces; edits on the host are live with no
+# reinstall. Kept as a separate layer so editing source does not invalidate the
+# multi-GB dependency layer above.
+COPY src ./src
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen
 
 CMD ["bash"]

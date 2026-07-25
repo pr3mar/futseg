@@ -356,3 +356,14 @@ details, no machine/hardware specifics, no credentials. This repo is public.
     `/cache/uv`), duplicating wheels already installed in the image. Accepted rather than split into
     a second volume: both are caches, both reconstructible, and one `make clean-cache` is easier to
     reason about than two.
+  - **The image installs the project editable, not just its dependencies.** Caught while answering
+    how to point an IDE at the container: `uv sync --frozen --no-install-project` leaves `futseg`
+    absent from `/opt/venv`, so `import futseg` fails for anything that does not go through
+    `uv run` — an IDE interpreter, a debugger, a profiler. `make test` hid this, because `uv run`
+    reinstalls the project on every invocation into a container layer that `--rm` discards.
+    Fixed with a second, cheap layer (`COPY src` + `uv sync --frozen`) below the dependency layer.
+    Because the install is editable against `/workspace/src` and the bind mount supplies that path,
+    **code changes still require no rebuild** — verified by writing a file on the host and reading
+    it back from a fresh container, and by importing a module that did not exist at build time.
+    Rejected: `PYTHONPATH=/workspace/src`, which needs no COPY at all but discards distribution
+    metadata and console scripts, and contradicts the src-layout rationale already recorded here.

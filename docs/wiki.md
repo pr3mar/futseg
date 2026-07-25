@@ -15,6 +15,11 @@ in place as understanding changes — keep it consistent, not just additive.
 - **The virtualenv lives at `/opt/venv`, outside the bind-mounted source.** An in-tree `.venv`
   inside a bind mount is written back to the host, where it collides with anything the host built
   there. Never point `UV_PROJECT_ENVIRONMENT` into `/workspace`.
+- **The image installs the project editable, so `/opt/venv/bin/python` works without `uv run`.**
+  Anything driving the interpreter directly — an IDE interpreter, a debugger, a profiler — knows
+  nothing about uv, and `import futseg` fails without this. Because the install is editable against
+  `/workspace/src`, **editing code never requires a rebuild**, new modules included; only a change
+  to `uv.lock` invalidates the dependency layer.
 - Packaging: `hatchling` with a `src/` layout (`src/futseg`). Boring on purpose — any PEP 517
   frontend builds it, and `src/` makes tests import the installed package rather than the working
   tree.

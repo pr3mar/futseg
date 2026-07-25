@@ -78,9 +78,20 @@ for every compiled dependency in the graph.
 
 An in-tree `.venv` inside a bind mount is written straight back to the host, which reintroduces
 exactly the collision described above. Keeping it in the image removes the possibility rather than
-documenting the hazard. Dependencies are installed at build time with
-`uv sync --frozen --no-install-project`; the project itself is installed from the mount on first
-`uv run`.
+documenting the hazard.
+
+The image is built in two layers. Dependencies first
+(`uv sync --frozen --no-install-project`, ~5.4 GB, invalidated only by `uv.lock`), then the project
+itself (`COPY src` + `uv sync --frozen`, seconds). The second step exists so that a plain
+`/opt/venv/bin/python` can import `futseg` **without going through `uv run`** — which is what an
+IDE's remote interpreter, a debugger or a profiler will do, none of them knowing about uv. Without
+it, `import futseg` fails in any fresh container that is not driven by `uv run`.
+
+That install is editable, recording a path to `/workspace/src`, which the bind mount supplies at run
+time. The copied source is therefore build-time scaffolding that the mount shadows: **code changes
+never require a rebuild**, new modules included. Verified by writing a file on the host and reading
+it back from a fresh container, and by importing a module that did not exist when the image was
+built.
 
 ### Cache and filesystem
 
