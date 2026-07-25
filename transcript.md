@@ -291,3 +291,14 @@ details, no machine/hardware specifics, no credentials. This repo is public.
     `__init__.py` immediately rather than at the milestone that first imports the module.
   - Corrected two stale items in issue #2 before starting: the `.gitattributes` checkbox (delivered
     by #16) and a platform note still requiring the repo to live off `/mnt/c/` (superseded by #18).
+  - **Added `scripts/cuda_check.py`** (requested during review of #2, folded into the same PR since
+    it delivers that issue's "assert CUDA actually resolved" item). It reports the wheel's compiled
+    arch list against the device's compute capability, then runs real work: fp32 matmul verified
+    against CPU, fp16 matmul, cuDNN conv. Kept out of `tests/` deliberately — it requires a GPU, and
+    a test that cannot run on the CI runner belongs behind `@pytest.mark.slow` at best, whereas this
+    is a diagnostic a human runs when a machine misbehaves. `scripts/` is a new top-level directory
+    not in `PLAN.md`'s tree.
+    Note for future readers: the first version of that script reported `inf` for the fp16 matmul and
+    briefly looked like a hardware fault. It was the script's own bug — `256**3` overflows fp16's
+    ~65504 ceiling, so the accumulation saturated. Reducing in fp32 fixed it. Recorded in
+    `docs/wiki.md` because the same trap will reappear in half-precision diffusion work.

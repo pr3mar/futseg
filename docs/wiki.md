@@ -88,9 +88,14 @@ in place as understanding changes — keep it consistent, not just additive.
   torch` works, tests pass — milestone 1 asserts CUDA explicitly.
 - **`torch.cuda.is_available()` alone is not proof CUDA works.** It returns `True` on a wheel that
   carries no kernels for the installed GPU architecture; that failure surfaces only when a real op
-  runs, which is the same silent-until-late shape the index rule above guards against. Verify with
-  an actual device op: `uv run python -c "import torch; assert torch.cuda.is_available();
-  (torch.ones(8, device='cuda') * 2).sum().item()"`.
+  runs, which is the same silent-until-late shape the index rule above guards against. Run
+  `uv run python scripts/cuda_check.py`: it prints the wheel's compiled arch list against the
+  device's compute capability and then does real work (fp32 matmul checked against CPU, fp16 matmul,
+  cuDNN conv). Exit code 0 means usable. Diagnostic only — it needs a GPU, so it is not in the test
+  suite.
+- **Summing an fp16 tensor can report `inf` and look like a GPU fault.** `256**3 = 16777216`
+  overflows fp16's ~65504 ceiling, so half-precision accumulation saturates. Cast to fp32 before
+  reducing. Cost an unnecessary debugging detour while writing `scripts/cuda_check.py`.
 - **`ultralytics` writes checkpoints into the current working directory**, which is actively hostile
   in a container (read-only or ephemeral workdir). `paths.py` redirects it and `HF_HOME` to one
   XDG-compliant cache dir, which also gives Docker a single volume to mount.
