@@ -23,6 +23,11 @@ in place as understanding changes — keep it consistent, not just additive.
   nothing about uv, and `import futseg` fails without this. Because the install is editable against
   `/workspace/src`, **editing code never requires a rebuild**, new modules included; only a change
   to `uv.lock` invalidates the dependency layer.
+- **Console scripts are the exception: `[project.scripts]` changes DO need a rebuild.** Entry points
+  are generated into `/opt/venv/bin` at *install* time from `pyproject.toml` metadata, so an
+  editable install does not pick up a newly added one. Symptom: `futseg: command not found` in a
+  container built before the entry point existed, even though `import futseg` works fine. Either
+  `make build`, or `uv sync` inside the running container to regenerate it.
 - Packaging: `hatchling` with a `src/` layout (`src/futseg`). Boring on purpose — any PEP 517
   frontend builds it, and `src/` makes tests import the installed package rather than the working
   tree.
