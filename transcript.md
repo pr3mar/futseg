@@ -375,3 +375,31 @@ details, no machine/hardware specifics, no credentials. This repo is public.
     would ignore the container an IDE is attached to. Verified in both modes, including a
     before/after count of running containers to confirm the resident one is genuinely reused rather
     than a second being spawned silently.
+
+## 2026-07-26
+
+- **Core abstractions and I/O (#3), milestone 2.** `Segmenter`/`Inpainter` protocols, `io.py`,
+  `device.py`, `paths.py`, `masking.py`, built test-first: every test was watched failing for the
+  right reason (missing symbol, not a typo) before the module existed.
+  Decisions:
+  - **The halo invariant is enforced in `masking.py`, not left to callers.** `derive_masks` raises
+    `ValueError` when `inpaint_grow <= composite_shrink + feather_radius` rather than returning
+    subtly wrong masks. At equality the feathered composite edge reaches exactly as far as the
+    regenerated region, so original pixels show through the partially transparent border — a defect
+    that is invisible in a unit test asserting shapes and obvious only on a real photo. Making it an
+    error means no backend can get it wrong quietly.
+  - **`union` is a per-pixel maximum, not a sum.** Overlapping instances in a multi-person photo
+    would exceed 1.0 and clip into a hard-edged blob.
+  - **`resolve_cache_dir` uses `Path.absolute()` rather than `.resolve()`.** Absolute is the point —
+    a relative override would drop weights beside the CWD — but resolving symlinks would rewrite
+    paths the caller passed in, which surprises anyone pointing the cache at a symlinked volume.
+  - **`configure_caches` sets `HF_HOME` with `setdefault`.** The container already points it at the
+    mounted `/cache` volume; clobbering it would send multi-GB downloads somewhere unmounted.
+  - **`load_image` always converts to RGB.** Greyscale or transparent input would otherwise reach a
+    segmenter with the wrong channel count, and alpha in the *input* is unrelated to the alpha this
+    pipeline derives.
+  - **No validation on `resolve_device`'s preference string.** The issue specifies the function
+    exactly; the CLI is the trust boundary and will constrain the choice. Adding a second check here
+    would duplicate policy the architecture puts in one place.
+  - A test asserts `inspect.signature(Inpainter.inpaint)` is exactly `(self, image, mask)`, so the
+    "no prompt argument" rule fails a test rather than only a review comment.
