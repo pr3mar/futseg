@@ -27,6 +27,9 @@ dependencies = [
 # Only needed by the quantized FLUX.2 [dev] registry entry (#6).
 quant = ["bitsandbytes"]
 
+[project.scripts]
+futseg = "futseg.cli:app"
+
 [dependency-groups]
 dev = [
     "pytest",

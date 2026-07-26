@@ -23,6 +23,11 @@ in place as understanding changes — keep it consistent, not just additive.
   nothing about uv, and `import futseg` fails without this. Because the install is editable against
   `/workspace/src`, **editing code never requires a rebuild**, new modules included; only a change
   to `uv.lock` invalidates the dependency layer.
+- **Console scripts are the exception: `[project.scripts]` changes DO need a rebuild.** Entry points
+  are generated into `/opt/venv/bin` at *install* time from `pyproject.toml` metadata, so an
+  editable install does not pick up a newly added one. Symptom: `futseg: command not found` in a
+  container built before the entry point existed, even though `import futseg` works fine. Either
+  `make build`, or `uv sync` inside the running container to regenerate it.
 - Packaging: `hatchling` with a `src/` layout (`src/futseg`). Boring on purpose — any PEP 517
   frontend builds it, and `src/` makes tests import the installed package rather than the working
   tree.
@@ -64,7 +69,14 @@ in place as understanding changes — keep it consistent, not just additive.
   privacy rule is not the blocker here; the absence of a real annotation is.
 - **`futseg segment` is a first-class command, not a debug flag.** Segmenting without inpainting is
   how mask edge quality gets judged, needs no diffusion weights or prompt, and is useful on its own.
-  Spec in `PLAN.md` milestone 7; implemented in #7.
+- **The CLI is the only entry point; don't add scripts that duplicate it.** `make exec
+  CMD="futseg segment input/x.jpg"` runs it in the container, so no `make` target needs to wrap it
+  either. A second argument parser means a second set of defaults that drifts.
+- **Exit codes are part of the contract**: `0` success, `1` no person found, `2` usage error.
+  Errors go to stderr so stdout stays parseable when piped. An empty mask is never success.
+- **Backends are constructed in `cli.py` and nowhere else** (`_build_segmenter`,
+  `_build_inpainter`), imported lazily so `--help` loads no models. Tests monkeypatch those two
+  functions, which is why the CLI suite needs no weights.
 
 ## Decisions
 

@@ -556,3 +556,22 @@ details, no machine/hardware specifics, no credentials. This repo is public.
     registry rather than discovered as a 401 after the user selects it.
     Real fp16 download sizes, measured from the Hub file listing rather than the repo totals which
     include fp32 duplicates: sd15-inpaint 2.6 GB, sdxl-inpaint 6.5 GB, flux2-klein-4B 14.9 GB.
+- **CLI (#7), milestone 7.** `cli.py`: a typer app with `futseg run` and `futseg segment`, plus the
+  `[project.scripts]` entry point deferred from #2 — which now points at something real.
+  Decisions:
+  - **Backends are constructed in exactly two functions** (`_build_segmenter`, `_build_inpainter`),
+    imported lazily so `--help` loads no models. Tests monkeypatch those two, which is why the CLI
+    suite needs no weights at all; it exercises artefact naming, exit codes and flag plumbing rather
+    than model behaviour, which is already covered where the models live.
+  - **Exit codes are contract, not decoration**: `0` success, `1` no person found, `2` usage error.
+    An empty mask is never success. Errors go to stderr so stdout stays parseable when piped —
+    caught by a test that initially asserted against stdout and failed for the right reason.
+  - **The `k > j + feather` guard is checked in the CLI too**, producing a usage error rather than
+    letting `derive_masks` raise a traceback at the user. The guard stays in `masking.py` as the
+    real enforcement; this is only the friendly surface.
+  - **No `make segment` / `make run` targets.** `make exec CMD="futseg segment input/x.jpg"` already
+    runs it in the container, and a wrapper would be a second place for defaults to drift — the same
+    mistake as the scrapped `scripts/segment.py`.
+  Verified through the installed console script, not just `CliRunner`: `which futseg` resolves to
+  `/opt/venv/bin/futseg`, `futseg segment` writes all five artefacts, `futseg run --backend
+  composite` produces an image, a person-free photo exits 1, and a missing file exits 2.
