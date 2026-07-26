@@ -53,31 +53,52 @@ PROMPT="a neon-lit street at night" MODEL=sdxl-inpaint scripts/run_all.sh
 ```
 futseg run <image> --prompt "..." [--out out/result.png]
                    [--backend diffusion|composite] [--model <key>]
+                   [--steps N] [--guidance-scale F] [--strength F]
                    [--quality best|fast] [--device auto|cuda|cpu]
-                   [--steps N] [--guidance-scale F] [--weights-dir PATH]
+                   [--confidence F] [--imgsz N] [--fill-holes/--no-fill-holes]
+                   [--inpaint-grow K] [--composite-shrink J] [--feather R]
+                   [--weights-dir PATH]
 ```
+
+**Diffusion** (`run` only):
 
 | Flag | Default | Notes |
 |---|---|---|
 | `--prompt` | *required* | Describes the **background**, not the people — see below |
-| `--out` | `out/result.png` | Parent directories are created |
 | `--backend` | `diffusion` | `composite` needs no model weights; useful for a fast loop |
 | `--model` | `flux2-klein` | Registry key, see the model table |
-| `--quality` | `best` | `best` = YOLO11 → SAM2; `fast` = YOLO11-seg alone, coarser |
-| `--device` | `auto` | Resolved once and passed down |
 | `--steps` | per-model | Leave unset; each checkpoint declares its own |
 | `--guidance-scale` | per-model | Leave unset; ignored entirely by distilled models |
-| `--weights-dir` | XDG cache | Where model weights are downloaded |
+| `--strength` | per-model | How far the model departs from the original |
 
 ### `futseg segment` — masks only
 
 ```
-futseg segment <image>... [--out out] [--quality best|fast] [--device auto|cuda|cpu]
+futseg segment <image>... [--out out]
+                          [--quality best|fast] [--device auto|cuda|cpu]
+                          [--confidence F] [--imgsz N] [--fill-holes/--no-fill-holes]
                           [--inpaint-grow K] [--composite-shrink J] [--feather R]
                           [--weights-dir PATH]
 ```
 
-Takes several paths, so `futseg segment input/*.jpg` works. Writes five files per input:
+**Both commands** share the segmentation and mask-derivation options, because detection sensitivity
+and seam geometry are not properties of which command you happened to type:
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--quality` | `best` | `best` = YOLO11 → SAM2; `fast` = YOLO11-seg alone, coarser |
+| `--device` | `auto` | Resolved once and passed to every backend |
+| `--confidence` | `0.25` | Lower it when a person is missed; raise it when something else is detected |
+| `--imgsz` | `1280` | Detector input size; larger finds smaller people |
+| `--fill-holes` | on | `--no-fill-holes` shows the raw mask, pinholes and all |
+| `--inpaint-grow` *(k)* | `12` | Grows the regenerated region **into** the subject |
+| `--composite-shrink` *(j)* | `3` | Pulls the composited subject **in** from its own silhouette |
+| `--feather` | `5` | Softens the composited edge |
+| `--out` | `out` / `out/result.png` | Parent directories are created |
+| `--weights-dir` | XDG cache | Where model weights are downloaded |
+
+`futseg segment` takes several paths, so `futseg segment input/*.jpg` works. It writes five files
+per input:
 
 | File | Answers |
 |---|---|

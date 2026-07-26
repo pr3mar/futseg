@@ -633,3 +633,21 @@ details, no machine/hardware specifics, no credentials. This repo is public.
   Measured on `IMG_7170`, model already loaded: **4 steps 4.2s against 28 steps 9.2s**, and the
   4-step run also paid the one-off triton JIT compile, so the true ratio is better than 2.2x.
   Quality at 4 steps is not merely acceptable, it is the best output produced so far.
+- **Full parameter surface on the CLI (#37).** `futseg run` exposed the diffusion knobs but not the
+  mask offsets, while `futseg segment` exposed the offsets but no detection settings. Backwards:
+  `--inpaint-grow`/`--composite-shrink`/`--feather` decide seam quality and `run` is the command
+  that composites a finished image, so the seam was tunable only on the command that does not
+  produce it.
+  Decisions:
+  - **Grouped by what an option affects, not by which command it happens to suit.** Segmentation
+    (`--quality`, `--device`, `--confidence`, `--imgsz`, `--fill-holes`, `--weights-dir`) and mask
+    derivation (`--inpaint-grow`, `--composite-shrink`, `--feather`) apply to **both** commands;
+    only the diffusion group is `run`-only. Detection sensitivity is not a property of which verb
+    was typed.
+  - **The shared options are declared once** as module-level `Annotated` aliases, so the two
+    commands cannot drift apart as flags are added — the drift is exactly what produced this bug.
+  - **The `k > j + feather` guard is now checked in `run` as well as `segment`**, producing a usage
+    error rather than a `derive_masks` traceback.
+  Verified against the built console script rather than only `CliRunner`: all 16 options present on
+  `run` and all 10 on `segment`, a real tuned invocation succeeds end to end on the composite
+  backend, and the seam guard fires on `run`.
