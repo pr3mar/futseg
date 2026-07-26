@@ -479,3 +479,12 @@ details, no machine/hardware specifics, no credentials. This repo is public.
   either photographs of real people in a public repo, which the project rules forbid, or synthetic
   data that would not measure real segmentation quality. Boundary IoU itself is implemented and
   tested against synthetic shapes with known answers; the fixtures need a decision first.
+  Follow-up on the fixtures question: **local-only, in a gitignored `fixtures/`.** The framing in
+  the PR was wrong and was corrected — privacy was never the blocker. The photo never needs
+  committing (`bus.jpg` ships inside the installed `ultralytics` package, and the repo tracks zero
+  images), and a hand-annotated ground-truth *mask* is a binary silhouette, not a photograph. The
+  real distinction is narrower: a gitignored fixture is visible to one machine, so a metric reading
+  one is a local tool rather than a regression gate; committing it is what would make it
+  CI-checkable. Deferred because there is no CI yet (#15) and no hand annotation exists — and
+  scoring a segmenter against ground truth produced by a segmenter would be circular, so generating
+  one was not an option.
