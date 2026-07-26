@@ -488,3 +488,32 @@ details, no machine/hardware specifics, no credentials. This repo is public.
   CI-checkable. Deferred because there is no CI yet (#15) and no hand annotation exists — and
   scoring a segmenter against ground truth produced by a segmenter would be circular, so generating
   one was not an option.
+- **Composite backend + end-to-end pipeline (#5), milestone 5.** `inpaint/composite.py` (solid
+  colour, blur, static image) and `pipeline.py`. First milestone that emits a finished image.
+  Decisions:
+  - **Three small backend classes rather than one with a mode flag.** Each is a handful of lines with
+    no branching, and the `Inpainter` protocol already makes them interchangeable; a mode enum would
+    add a conditional to save two class statements.
+  - **The anti-halo guarantee is now a test, not a doctrine.** `test_pipeline.py` fills the generated
+    background with a colour that appears nowhere in the input, then asserts every pixel the subject
+    does not cover is exactly that colour. A single surviving original pixel outside the subject
+    fails it. That is the cheap-cutout rim made arithmetic instead of a thing to squint at.
+  - **The pipeline never inspects its backends.** It takes a `Segmenter` and an `Inpainter` and
+    composites the original subject over whatever came back, so the person is untouched by the
+    backend even at the boundary — the invariant holds for a diffusion model exactly as it does for
+    a flat fill.
+  - **Defaults `k=12, j=3, feather=5`**, tuned on a real photo. Only `j` and `feather` are visible in
+    the output: `k` governs what is regenerated *underneath* the composited subject, so it only has
+    to clear `j + feather` with margin. Measured on `bus.jpg` at four settings, zero leaked pixels at
+    all of them — as the guard guarantees — while `j` costs subject area: 7.5% at j=2, 10.7% at j=3,
+    21.3% at j=6.
+  - Validated by looking, not only by asserting: seam crops located from the mask itself rather than
+    guessed at, rendered against magenta and against blur. No stale rim; the boundary sits where the
+    original's does.
+  Two limitations recorded in `docs/wiki.md` rather than silently accepted:
+  - **`BlurInpainter` blurs the subject too**, so subject colour smears outward near the silhouette.
+    A soft fringe that is easy to mistake for a halo when eyeballing. Accepted for a dev-loop
+    backend; `SolidColorInpainter` is the unambiguous instrument.
+  - **`k`/`j`/`feather` are absolute pixels, so behaviour is resolution-dependent.** `j=3` trims ~10%
+    of subject area at 810x1080 and would be negligible at 4000px. Tuned on the small image, which
+    errs conservative, but scaling with the image diagonal is unresolved and belongs with #7.

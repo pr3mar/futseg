@@ -181,6 +181,16 @@ in place as understanding changes — keep it consistent, not just additive.
 - **`SAM("sam2_b.pt")` downloads into the current working directory** exactly like `YOLO(...)` does.
   Observed the hard way: a probe with a bare filename dropped 78 MB into the repo root. Always pass
   an absolute path from `weights_dir()`.
+- **`BlurInpainter` blurs the original image, subject included**, so the subject's colours smear
+  outward into the background near the silhouette. That soft fringe is the backend's own artefact,
+  not a stale-background halo — easy to confuse when eyeballing a seam. It is accepted: this is a
+  dev-loop backend, not a quality fallback. Use `SolidColorInpainter` with a colour absent from the
+  photo when you want halo leakage to be unambiguous.
+- **`k`/`j`/`feather` are absolute pixel counts, so their effect is resolution-dependent.** At
+  810x1080 the shipped `j=3` trims about 10% of subject *area* because the figures are small; the
+  same 3px is negligible on a 4000px portrait. Defaults were tuned on a small image, which is the
+  conservative direction, but scaling them with the image diagonal is unresolved — see #7, where the
+  CLI exposes them.
 - **Score mask quality with boundary IoU, not plain IoU.** Plain IoU is dominated by the torso and
   barely moves when the hair is wrong, making it useless as a signal for the thing this project
   actually cares about.
