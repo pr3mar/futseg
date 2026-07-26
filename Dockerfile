@@ -20,9 +20,14 @@ RUN apt-get update \
       make \
       # triton JIT-compiles CUDA kernels at generation time and shells out to a
       # C compiler to do it. Without one, FLUX.2 fails mid-run with "Failed to
-      # find C compiler" -- after the weights have loaded, so the cost is paid
-      # before the error appears. gcc pulls in binutils and libc6-dev.
+      # find C compiler" -- after the weights have loaded, so the whole cost is
+      # paid before the error appears.
+      #
+      # libc6-dev is NOT optional and NOT implied: under --no-install-recommends
+      # gcc arrives without the C runtime objects, and the link then fails with
+      # "cannot find crti.o" instead. Both are needed, together.
       gcc \
+      libc6-dev \
  && rm -rf /var/lib/apt/lists/*
 
 # uv comes from its own published image rather than a curl-pipe-sh installer:
