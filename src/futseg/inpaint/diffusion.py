@@ -33,6 +33,12 @@ class ModelSpec:
     license: str
     #: Adapts our arguments to this pipeline's call signature.
     to_kwargs: Callable[..., dict]
+    #: Weight variant to fetch, or None when the repo publishes only one.
+    #: `torch_dtype=float16` alone does *not* select fp16 files — it downloads
+    #: the fp32 weights and casts them, roughly doubling the download.
+    variant: str | None = None
+    #: Whether the repo requires accepting a licence and a Hub token.
+    gated: bool = False
 
 
 def _mask_conditioned_kwargs(
@@ -80,19 +86,25 @@ REGISTRY: dict[str, ModelSpec] = {
         license="apache-2.0",
         to_kwargs=_mask_conditioned_kwargs,
     ),
+    # Purpose-built mask inpainting, ungated, and the cheapest realistic option
+    # at native 1024: 6.5 GB with the fp16 variant against 14.9 GB for klein.
     "sdxl-inpaint": ModelSpec(
         repo_id="diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
         pipeline_cls="StableDiffusionXLInpaintPipeline",
         native_res=1024,
         license="openrail++",
         to_kwargs=_sdxl_kwargs,
+        variant="fp16",
     ),
+    # Comparison only: 512 native is the quality bottleneck. 2.6 GB, which makes
+    # it the practical choice for exercising the backend end to end.
     "sd15-inpaint": ModelSpec(
         repo_id="stable-diffusion-v1-5/stable-diffusion-inpainting",
         pipeline_cls="StableDiffusionInpaintPipeline",
         native_res=512,
         license="creativeml-openrail-m",
         to_kwargs=_mask_conditioned_kwargs,
+        variant="fp16",
     ),
 }
 
@@ -143,14 +155,30 @@ class DiffusionInpainter:
         self.cache_dir: Path = configure_caches()
         self._pipeline = pipeline
 
+    def _from_pretrained_kwargs(self) -> dict:
+        """Arguments for `from_pretrained`, kept separate so they are testable.
+
+        `variant` matters as much as `torch_dtype`: dtype alone casts after
+        downloading fp32, so omitting the variant roughly doubles the download
+        for any repo that publishes fp16 weights.
+        """
+        import torch
+
+        kwargs: dict = {
+            "torch_dtype": torch.float16 if self.device.startswith("cuda") else torch.float32
+        }
+        if self.spec.variant and self.device.startswith("cuda"):
+            kwargs["variant"] = self.spec.variant
+        return kwargs
+
     def _load(self) -> object:
         if self._pipeline is None:
             import diffusers
-            import torch
 
             cls = getattr(diffusers, self.spec.pipeline_cls)
-            dtype = torch.float16 if self.device.startswith("cuda") else torch.float32
-            self._pipeline = cls.from_pretrained(self.spec.repo_id, torch_dtype=dtype)
+            self._pipeline = cls.from_pretrained(
+                self.spec.repo_id, **self._from_pretrained_kwargs()
+            )
         return self._pipeline
 
     def inpaint(self, image: Image.Image, mask: Alpha) -> Image.Image:

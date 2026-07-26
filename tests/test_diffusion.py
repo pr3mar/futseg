@@ -231,6 +231,44 @@ def test_sampler_settings_are_constructor_injected() -> None:
     assert call["num_inference_steps"] == 12
 
 
+def test_the_fp16_variant_is_requested_on_cuda() -> None:
+    """`torch_dtype=float16` alone downloads fp32 and casts it, roughly doubling
+    the download. The variant is what actually fetches the small files.
+
+    Fails if `variant` stops being passed to `from_pretrained`.
+    """
+    import torch
+
+    backend = inpainter(FakePipeline(), device="cuda", model="sdxl-inpaint")
+
+    kwargs = backend._from_pretrained_kwargs()
+    assert kwargs["variant"] == "fp16"
+    assert kwargs["torch_dtype"] is torch.float16
+
+
+def test_no_fp16_variant_is_requested_on_cpu() -> None:
+    """fp16 weights on CPU are slower than fp32 and some ops are unsupported."""
+    backend = inpainter(FakePipeline(), device="cpu", model="sdxl-inpaint")
+
+    assert "variant" not in backend._from_pretrained_kwargs()
+
+
+def test_a_model_without_an_fp16_variant_does_not_request_one() -> None:
+    """Asking for a variant a repo does not publish makes from_pretrained fail."""
+    backend = inpainter(FakePipeline(), device="cuda", model="flux2-klein")
+
+    assert REGISTRY["flux2-klein"].variant is None
+    assert "variant" not in backend._from_pretrained_kwargs()
+
+
+def test_gated_models_are_marked_as_such() -> None:
+    """A gated entry cannot load without a Hub token; that must be declared
+    rather than discovered as a 401 after the user picks it."""
+    for key, spec in REGISTRY.items():
+        assert isinstance(spec.gated, bool), key
+    assert REGISTRY[DEFAULT_MODEL].gated is False, "the default must work without a token"
+
+
 def test_weights_resolve_through_the_cache_not_the_working_directory(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
