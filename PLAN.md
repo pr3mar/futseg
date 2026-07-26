@@ -195,10 +195,29 @@ accepting a parameter it would ignore.
    pipeline import, device selection (cuda/cpu), the resolution strategy above, and
    verified `to_kwargs` adapters for at least FLUX.2 [klein] and SDXL-inpaint. Wired as the
    default backend.
-7. **CLI** — `typer` app: `futseg run <image> --prompt "..." [--backend composite|diffusion]
-   [--quality fast|best] [--model <registry-key>] [--device auto|cuda|cpu]
-   [--weights-dir <path>] --out out.png`, plus `futseg segment` (mask-only debug output,
-   useful for inspecting the two derived masks).
+7. **CLI** — `typer` app with two commands.
+
+   `futseg run <image> --prompt "..." [--backend composite|diffusion] [--quality fast|best]
+   [--model <registry-key>] [--device auto|cuda|cpu] [--weights-dir <path>] --out out.png`
+
+   `futseg segment <image>... [--out DIR] [--quality fast|best] [--device auto|cuda|cpu]
+   [--weights-dir <path>] [--inpaint-grow K] [--composite-shrink J] [--feather R]`
+
+   **`segment` is a first-class command, not a debug flag.** Segmenting without inpainting is
+   how mask edge quality is judged, and it is useful on its own; it touches no inpainting
+   backend, so it needs neither diffusion weights nor a prompt. Per input it writes
+   `<stem>-alpha.png` (what the segmenter returned), `<stem>-inpaint-mask.png` and
+   `<stem>-composite-alpha.png` (the two derived masks), `<stem>-overlay.png` (background
+   tinted, so the silhouette is judged against the photograph rather than against black —
+   the only view in which hair and fingers reveal how coarse a mask really is), and
+   `<stem>-cutout.png` (the subject on transparency).
+
+   Exit codes matter because both commands must run non-interactively: `0` success, `1` no
+   person found — an empty mask is never reported as success — `2` usage error.
+
+   Convention: photographs live in `input/`, artefacts in `out/`, both gitignored and neither
+   hardcoded. Accepting several paths covers `futseg segment input/*.jpg`; directory walking,
+   video and true batch processing stay in the deferred roadmap.
 8. **Tests** — unit tests for masking/pipeline wiring with mocked `Segmenter`/`Inpainter`;
    a small number of `@pytest.mark.slow` integration tests that run real models, skipped
    by default.

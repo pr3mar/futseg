@@ -1,0 +1,7 @@
+# Drop photos to segment in this directory.
+#
+#     make segment IMAGE=input/your-photo.jpg
+#
+# Contents are gitignored: this is a public repository and photographs of real
+# people do not belong in it. Only this placeholder is tracked, so the directory
+# exists in a fresh clone.
