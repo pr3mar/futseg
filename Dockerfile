@@ -18,6 +18,11 @@ RUN apt-get update \
       curl \
       git \
       make \
+      # triton JIT-compiles CUDA kernels at generation time and shells out to a
+      # C compiler to do it. Without one, FLUX.2 fails mid-run with "Failed to
+      # find C compiler" -- after the weights have loaded, so the cost is paid
+      # before the error appears. gcc pulls in binutils and libc6-dev.
+      gcc \
  && rm -rf /var/lib/apt/lists/*
 
 # uv comes from its own published image rather than a curl-pipe-sh installer:
