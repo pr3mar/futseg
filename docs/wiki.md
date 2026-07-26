@@ -51,6 +51,13 @@ in place as understanding changes — keep it consistent, not just additive.
   parameter it ignores.
 - Portability: no hardcoded local paths or machine-specific assumptions anywhere that gets
   committed. A fresh `uv sync` must work on any machine.
+- **Photographs go in `input/`, artefacts in `out/`.** Both are gitignored; `input/` is tracked as a
+  directory via `.gitkeep` so it exists in a fresh clone. This repo is public, so photographs of
+  real people must never enter it. Neither path is hardcoded — `--out` overrides the destination and
+  any path is accepted as input.
+- **`futseg segment` is a first-class command, not a debug flag.** Segmenting without inpainting is
+  how mask edge quality gets judged, needs no diffusion weights or prompt, and is useful on its own.
+  Spec in `PLAN.md` milestone 7; implemented in #7.
 
 ## Decisions
 

@@ -403,3 +403,26 @@ details, no machine/hardware specifics, no credentials. This repo is public.
     would duplicate policy the architecture puts in one place.
   - A test asserts `inspect.signature(Inpainter.inpaint)` is exactly `(self, image, mask)`, so the
     "no prompt argument" rule fails a test rather than only a review comment.
+- **Specified `futseg segment` as a first-class command (#24).** Design only; no CLI code, which
+  stays in #7.
+  Trigger: a request for "a script to segment an arbitrary photo". I wrote one
+  (`scripts/segment.py`, argparse, five artefacts) and it was scrapped in favour of putting the
+  capability in the product CLI instead — correctly. The script would have duplicated `futseg
+  segment` with a second argument parser, a second set of defaults and no tests, and the two would
+  have drifted the moment #7 landed. `scripts/cuda_check.py` is not a counter-example: it diagnoses
+  the *machine*, and nothing in the product will ever do that.
+  Decisions:
+  - **`segment` is a command, not a debug flag.** The plan called it "mask-only debug output";
+    segmenting without inpainting is how mask edge quality is judged and is useful on its own, so it
+    is specified as a product surface with defined artefacts and exit codes.
+  - **Five artefacts, and the overlay earns its place.** Alpha and the two derived masks are the
+    pipeline's actual intermediates; the cutout shows the composite alpha in use. The overlay —
+    background tinted, subject untouched — is the only view where the boundary is seen against the
+    photograph rather than against black, which is where hair and fingers actually expose a coarse
+    mask.
+  - **Exit code 1 when no person is found.** An empty mask is a plausible-looking success otherwise,
+    and this tool has to be usable non-interactively.
+  - **`input/` is tracked as a directory, contents gitignored.** The repo is public and photographs
+    of real people must never enter it; `.gitkeep` means the directory still exists in a fresh clone.
+  - Recorded on #7 that `paths.configure_caches()` has no production caller yet, so the cache policy
+    is defined but never applied — the CLI is where that gets wired.

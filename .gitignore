@@ -150,7 +150,13 @@ weights/
 checkpoints/
 .cache/huggingface/
 
-# Pipeline inputs/outputs from local runs
+# Pipeline inputs/outputs from local runs.
+#
+# input/ is where photos to segment live. The directory itself is tracked (via
+# .gitkeep) so it exists in a fresh clone; everything dropped into it is ignored,
+# because photographs of real people must never reach a public repo.
+input/*
+!input/.gitkeep
 outputs/
 out/
 samples/
