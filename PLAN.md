@@ -2,8 +2,9 @@
 
 ## Context
 
-`futseg` is currently an empty scaffold (`pyproject.toml` with no deps, a `uv`-managed
-`.venv`, Python 3.12). The goal: given an input photo, automatically segment the person(s)
+`futseg` is scaffolded but has no behaviour yet: dependencies and `uv.lock` are in place and
+every module under `src/futseg` is still a docstring. The goal: given an input photo,
+automatically segment the person(s)
 in it, then apply an inpainting model to regenerate/replace everything **outside** the
 person mask (the background) while keeping the person(s) intact — chosen over "remove
 person" or "edit region on person" as alternative directions.
@@ -14,14 +15,16 @@ importable library, using local open-source models only.
 ## Platform
 
 futseg targets **Linux**, because that is where it runs: developer workstations and server
-environments. Full rationale in [`docs/design/2026-07-25-linux-first-platform.md`](docs/design/2026-07-25-linux-first-platform.md).
+environments. Development happens inside a GPU-enabled Ubuntu LTS container, so the host OS is not
+part of the contract. Full rationale in
+[`docs/design/2026-07-25-container-first-development.md`](docs/design/2026-07-25-container-first-development.md).
 
 | Platform | Status |
 |---|---|
-| Linux x86_64 (glibc) | Supported target. CUDA optional, auto-detected |
-| macOS | Developable: segmentation + composite backend. Diffusion on CPU, slowly |
-| WSL2 | The maintainer's development environment; identical to Linux from the code's view |
-| Windows native | **Not supported**, and documented as such |
+| The dev container (Ubuntu LTS) | **The** development and test environment |
+| Linux x86_64 (glibc) | Supported runtime target. CUDA optional, auto-detected |
+| macOS | Developable outside the container: segmentation + composite backend. Diffusion on CPU, slowly |
+| Windows native | **Not supported**, and not developed against |
 
 This is not incidental. PyPI's `torch` wheel **bundles CUDA on Linux x86_64 (527 MB) but is
 CPU-only on Windows (122 MB)** — every `nvidia-*` dependency is gated `platform_system == "Linux"`.
@@ -199,11 +202,11 @@ accepting a parameter it would ignore.
 8. **Tests** — unit tests for masking/pipeline wiring with mocked `Segmenter`/`Inpainter`;
    a small number of `@pytest.mark.slow` integration tests that run real models, skipped
    by default.
-9. **README** — install (`uv sync`), quickstart CLI example, architecture overview (the
-   module list above), model/weight download notes, the per-model license table, the
-   platform contract and WSL2 development setup, hardware notes (GPU recommended for the
-   diffusion backend, composite backend works CPU-only), and an honest statement of the
-   hair/matting limitation from "Quality bar" above.
+9. **README** — install, quickstart CLI example, architecture overview (the module list
+   above), model/weight download notes, the per-model license table, the platform contract
+   and container development setup (`make build`, `make check`), hardware notes (GPU
+   recommended for the diffusion backend, composite backend works CPU-only), and an honest
+   statement of the hair/matting limitation from "Quality bar" above.
 10. **Docker image** — a runtime image for server use. Shape deliberately undecided until
     the CLI exists and its mount/configuration needs are known; the one fixed constraint is
     that **model weights are mounted, never baked in** (multi-GB, would make the image

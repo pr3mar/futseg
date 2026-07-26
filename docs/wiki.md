@@ -7,19 +7,35 @@ in place as understanding changes — keep it consistent, not just additive.
 
 ## Conventions
 
+- **Development happens inside the container.** `make build` once, then `make check` / `shell` /
+  `cuda`; `make help` lists everything. There is no host virtualenv, no host Python, and nothing to
+  activate; the only host requirement is docker with GPU support. See
+  `docs/design/2026-07-25-container-first-development.md`.
+- **`make up` is optional.** Task targets `exec` into a resident container when one is running and
+  fall back to a one-off `run --rm` otherwise, so `make test` behaves the same either way. Keep one
+  resident (`make up`) when you want a shell and an IDE sharing the same container.
 - Package management: `uv` only (`uv sync`, `uv run ...`). No `pip install` / `poetry` / raw `venv`.
-- **Drive development through `make`** (`make help`, `sync`, `lint`, `test`, `check`, `cuda`). The
-  `Makefile` exports `UV_PROJECT_ENVIRONMENT` itself, so the environment is a property of the
-  command rather than of the shell. Calling `uv` directly is not wrong, but it only works in a shell
-  that has the variable — see the gotcha below.
+- **The virtualenv lives at `/opt/venv`, outside the bind-mounted source.** An in-tree `.venv`
+  inside a bind mount is written back to the host, where it collides with anything the host built
+  there. Never point `UV_PROJECT_ENVIRONMENT` into `/workspace`.
+- **The image installs the project editable, so `/opt/venv/bin/python` works without `uv run`.**
+  Anything driving the interpreter directly — an IDE interpreter, a debugger, a profiler — knows
+  nothing about uv, and `import futseg` fails without this. Because the install is editable against
+  `/workspace/src`, **editing code never requires a rebuild**, new modules included; only a change
+  to `uv.lock` invalidates the dependency layer.
 - Packaging: `hatchling` with a `src/` layout (`src/futseg`). Boring on purpose — any PEP 517
   frontend builds it, and `src/` makes tests import the installed package rather than the working
   tree.
 - `ruff` and `pytest` are configured in `pyproject.toml`, not in separate files. `ruff`: py312,
   line-length 100, rules `E,F,I,UP,B`. `pytest`: `testpaths = ["tests"]`, `slow` marker registered.
-- **Linux is the target platform.** Windows native is unsupported; the maintainer develops in WSL2
-  so dev == CI == prod. macOS is developable for segmentation and the composite backend only. See
-  `docs/design/2026-07-25-linux-first-platform.md`.
+- **Linux is the target platform.** Windows native is unsupported and not developed against; the dev
+  container makes dev == CI == prod one image rather than three approximations. macOS is developable
+  outside the container for segmentation and the composite backend only.
+- **The base image is plain Ubuntu LTS, not `nvidia/cuda`.** torch's wheels bundle the CUDA runtime
+  and the container runtime injects the host driver, so a CUDA base image would ship a second copy
+  of libraries already inside the torch wheel. Python is pinned via uv (`UV_PYTHON=3.12`) rather
+  than inherited from the distro, so bumping the base OS cannot silently move the interpreter out
+  from under `uv.lock`.
 - Device selection happens **only** in `device.py` (`resolve_device()`). Backends receive a resolved
   `"cuda"` / `"cpu"` string and never probe for CUDA themselves.
 - Writable locations resolve **only** through `paths.py`. Nothing is written to the current working
@@ -67,8 +83,9 @@ in place as understanding changes — keep it consistent, not just additive.
 - **GitHub milestones 1–11 match `PLAN.md` one-to-one, but the issue numbering does not run in
   order.** Later additions hold higher issue numbers while sitting earlier in the sequence:
   milestones 1–11 map to issues #2, #3, #4, **#10**, #5, #6, #7, #8, #9, #14, #15 respectively.
-  `#1` (roadmap) and `#13` (the Linux-first platform decision, which spans milestones) carry no
-  milestone. Don't assume issue N corresponds to milestone N−1.
+  `#1` (roadmap), `#13` (the Linux-first platform decision) and `#20` (the dev container that
+  superseded it) carry no milestone. Don't assume issue N corresponds to milestone N−1. Milestone 10
+  (#14) remains the *runtime/distribution* image — a different artefact from the dev container.
 
 ## Gotchas
 
@@ -93,10 +110,9 @@ in place as understanding changes — keep it consistent, not just additive.
 - **`torch.cuda.is_available()` alone is not proof CUDA works.** It returns `True` on a wheel that
   carries no kernels for the installed GPU architecture; that failure surfaces only when a real op
   runs, which is the same silent-until-late shape the index rule above guards against. Run
-  `uv run python scripts/cuda_check.py`: it prints the wheel's compiled arch list against the
-  device's compute capability and then does real work (fp32 matmul checked against CPU, fp16 matmul,
-  cuDNN conv). Exit code 0 means usable. Diagnostic only — it needs a GPU, so it is not in the test
-  suite.
+  `make cuda`: it prints the wheel's compiled arch list against the device's compute capability and
+  then does real work (fp32 matmul checked against CPU, fp16 matmul, cuDNN conv). Exit code 0 means
+  usable. Diagnostic only — it needs a GPU, so it is not in the test suite.
 - **Summing an fp16 tensor can report `inf` and look like a GPU fault.** `256**3 = 16777216`
   overflows fp16's ~65504 ceiling, so half-precision accumulation saturates. Cast to fp32 before
   reducing. Cost an unnecessary debugging detour while writing `scripts/cuda_check.py`.
@@ -111,19 +127,18 @@ in place as understanding changes — keep it consistent, not just additive.
   from under the other. `pyproject.toml` neutralises the transitive requirement with
   `[tool.uv] override-dependencies = ["opencv-python; sys_platform == 'never'"]`. If `cv2` ever
   goes missing after a dependency change, recreate the venv rather than reinstalling on top.
-- **In WSL2 the source is on `/mnt/c/`, but the venv is not.** Set
-  `UV_PROJECT_ENVIRONMENT=$HOME/.venvs/futseg`. drvfs I/O hurts when torch is ~5 GB of small files,
-  and that weight is the environment, not the source. Two reasons, not one: a single in-tree
-  `.venv/` shared by a Windows and a Linux interpreter also lets `uv sync` from either side silently
-  overwrite the other's layout (`Scripts/` vs `bin/`).
-- **An `~/.bashrc` export is not a reliable way to carry `UV_PROJECT_ENVIRONMENT`.** Ubuntu's
-  `.bashrc` returns at its interactive guard before reaching anything appended to the end, so
-  non-interactive shells never see it; neither does a terminal opened before the line was added, nor
-  an IDE run configuration. When uv does not know where the environment belongs it does not warn —
-  it builds `.venv` in-tree on drvfs, which cost 4 GB and a full no-hardlink copy once already. The
-  `Makefile` exists to make this impossible; prefer `make <target>` over a bare `uv` call.
-- **`.gitattributes` forces LF.** Editing from Windows while running on Linux otherwise yields
-  `bad interpreter: /bin/bash^M` inside containers.
+- **The `/cache` volume holds more than model weights.** `XDG_CACHE_HOME=/cache` also relocates uv's
+  wheel cache to `/cache/uv` (~5 GB), so the volume carries weights, HF downloads and wheels
+  together. All reconstructible; `make clean-cache` deletes all of it and forces a re-download.
+- **`docker images` overstates the image size.** It reported 17.8 GB where `docker image inspect`
+  reports 5.71 GB, because buildkit's attestation/manifest-list entries get counted too. Trust
+  `docker image inspect --format '{{.Size}}'`.
+- **A `.venv` appearing in the project root means something bypassed the container.** uv does not
+  warn when it cannot tell where the environment belongs; it just picks `.venv` in the working
+  directory. Inside a bind mount that lands on the host. Delete it and run the `make` target rather
+  than a bare `uv` on the host — this cost 4 GB once already.
+- **`.gitattributes` forces LF.** A CRLF entrypoint fails inside a container as
+  `bad interpreter: /bin/bash^M`, and the working tree may be checked out on a Windows filesystem.
 - **Score mask quality with boundary IoU, not plain IoU.** Plain IoU is dominated by the torso and
   barely moves when the hair is wrong, making it useless as a signal for the thing this project
   actually cares about.
