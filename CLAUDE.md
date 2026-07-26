@@ -48,15 +48,15 @@ protocols, `io.py`, `device.py`, `paths.py` and `masking.py` (including the two-
 its `inpaint_grow > composite_shrink + feather_radius` guard) are implemented and unit-tested.
 Both segmentation tiers landed: `segmentation/yolo.py` (#4, `--quality fast`) and
 `segmentation/refined.py` (#10, YOLO11 detection → SAM2, the default `--quality best`), each with a
-`@pytest.mark.slow` test running real models. `metrics.py` provides boundary IoU. Still
-docstring-only: `pipeline.py`, `cli.py`, and both inpainting backends. The intended architecture is
-specified in `PLAN.md`, with the platform contract in
+`@pytest.mark.slow` test running real models. `metrics.py` provides boundary IoU. The intended
+architecture is specified in `PLAN.md`, with the platform contract in
 `docs/design/2026-07-25-container-first-development.md`, and tracked as GitHub issues/milestones on
 `pr3mar/futseg`.
 
-The pipeline runs end to end (#5): `pipeline.run()` orchestrates segment → derive → inpaint →
-composite, with the non-generative backends in `inpaint/composite.py`. Still docstring-only:
-`cli.py` and `inpaint/diffusion.py`. Issue #6 (generative inpainting backend, milestone 6) is next.
+The CLI landed (#7): `futseg run` and `futseg segment`, installed as a console script. Every
+milestone through 7 is implemented — protocols, both segmentation tiers, both inpainting
+backends, the pipeline, and the CLI. Remaining: #8 (tests), #9 (README), #14 (runtime image),
+#15 (CI), plus deferred quality work in #28.
 
 Commands: `make build` once, then `make check` (lint + tests), `make shell`, `make cuda`. All run
 in the container.

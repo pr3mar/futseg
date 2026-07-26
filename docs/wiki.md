@@ -64,7 +64,14 @@ in place as understanding changes — keep it consistent, not just additive.
   privacy rule is not the blocker here; the absence of a real annotation is.
 - **`futseg segment` is a first-class command, not a debug flag.** Segmenting without inpainting is
   how mask edge quality gets judged, needs no diffusion weights or prompt, and is useful on its own.
-  Spec in `PLAN.md` milestone 7; implemented in #7.
+- **The CLI is the only entry point; don't add scripts that duplicate it.** `make exec
+  CMD="futseg segment input/x.jpg"` runs it in the container, so no `make` target needs to wrap it
+  either. A second argument parser means a second set of defaults that drifts.
+- **Exit codes are part of the contract**: `0` success, `1` no person found, `2` usage error.
+  Errors go to stderr so stdout stays parseable when piped. An empty mask is never success.
+- **Backends are constructed in `cli.py` and nowhere else** (`_build_segmenter`,
+  `_build_inpainter`), imported lazily so `--help` loads no models. Tests monkeypatch those two
+  functions, which is why the CLI suite needs no weights.
 
 ## Decisions
 
