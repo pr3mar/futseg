@@ -55,6 +55,13 @@ in place as understanding changes — keep it consistent, not just additive.
   directory via `.gitkeep` so it exists in a fresh clone. This repo is public, so photographs of
   real people must never enter it. Neither path is hardcoded — `--out` overrides the destination and
   any path is accepted as input.
+- **Boundary-quality fixtures live in a gitignored `fixtures/`, local-only.** A gitignored fixture
+  is visible to exactly one machine, so a metric reading one is a local tool, not a regression gate
+  — committing it is what would make it CI-checkable. That is deliberate for now: there is no CI
+  (#15), and scoring a segmenter against a ground-truth mask that a segmenter produced is circular.
+  Note the image itself never needs committing — `bus.jpg` ships inside the installed `ultralytics`
+  package. Only a hand-annotated mask would, and a binary silhouette is not a photograph, so the
+  privacy rule is not the blocker here; the absence of a real annotation is.
 - **`futseg segment` is a first-class command, not a debug flag.** Segmenting without inpainting is
   how mask edge quality gets judged, needs no diffusion weights or prompt, and is useful on its own.
   Spec in `PLAN.md` milestone 7; implemented in #7.
@@ -165,6 +172,15 @@ in place as understanding changes — keep it consistent, not just additive.
 - **Slow tests use `ultralytics.utils.ASSETS / "bus.jpg"`.** It ships inside the installed package
   and contains people, so real-model tests need no committed image fixture and raise no licensing
   or privacy question for a public repo.
+- **SAM2's `result.boxes.cls` is a prompt ordinal, not a COCO class.** It comes back as
+  `[0., 1., 2., ...]` — one per box you prompted with. Filtering it against `PERSON_CLASS`, which is
+  the correct pattern on *detection* output in `yolo.py`, would silently keep only the first person.
+  Person filtering belongs before the prompt, on the detector's output. `test_refined.py` pins this.
+- **SAM2 returns `masks.data` as `dtype=bool`**, unlike YOLO11-seg's float masks. The `Segmenter`
+  protocol requires float32, so `refined.py` converts explicitly.
+- **`SAM("sam2_b.pt")` downloads into the current working directory** exactly like `YOLO(...)` does.
+  Observed the hard way: a probe with a bare filename dropped 78 MB into the repo root. Always pass
+  an absolute path from `weights_dir()`.
 - **Score mask quality with boundary IoU, not plain IoU.** Plain IoU is dominated by the torso and
   barely moves when the hair is wrong, making it useless as a signal for the thing this project
   actually cares about.

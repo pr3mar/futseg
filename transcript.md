@@ -448,3 +448,43 @@ details, no machine/hardware specifics, no credentials. This repo is public.
     of real people must never enter it; `.gitkeep` means the directory still exists in a fresh clone.
   - Recorded on #7 that `paths.configure_caches()` has no production caller yet, so the cache policy
     is defined but never applied — the CLI is where that gets wired.
+- **SAM2 refinement, the default tier (#10), milestone 4.** `segmentation/refined.py`: YOLO11
+  detection on the person class, each box a SAM2 prompt, instance masks unioned. Plus `metrics.py`
+  with boundary IoU. Built test-first with both models injected.
+  The issue said to confirm the ultralytics SAM2 API rather than assume it, which was worth doing —
+  two of the three findings would have become bugs:
+  - **`result.boxes.cls` from SAM2 is a prompt ordinal, not a COCO class.** It returns
+    `[0., 1., 2., 3.]`, one per prompt. Filtering that against `PERSON_CLASS` — exactly the pattern
+    `yolo.py` uses correctly on *detection* output — would have silently kept only the first person
+    in every multi-person photo, with no error anywhere. `test_refined.py` has a dedicated test so
+    copying the pattern across fails loudly.
+  - **SAM2 masks arrive as `dtype=bool`**, where YOLO11-seg returns float. The protocol requires
+    float32, so the conversion is explicit.
+  - **`SAM("sam2_t.pt")` downloads into the CWD** like `YOLO(...)` does; a probe with a bare
+    filename dropped 78 MB into the repo root (gitignored, so harmless, but it proves the rule).
+  Decisions:
+  - **Person filtering happens before prompting, never after.** Prompting SAM with a dog's box and
+    discarding the result afterwards would waste a model call and invite filtering SAM's output,
+    which is the ordinal trap above.
+  - **No SAM call at all when no person is detected.** Loading and running a model to produce
+    nothing is worth one branch.
+  - **`sam2_b.pt` as the default checkpoint**, configurable. The probe used `sam2_t.pt`; base is the
+    balance for a tier whose whole purpose is edge quality.
+  Measured, rather than asserted, on `bus.jpg` (810x1080): plain IoU between the two tiers 0.9011,
+  boundary IoU 0.8466. The tiers agree on the bulk and disagree at the rim, which is the premise the
+  milestone rests on — but the gap is modest at this resolution, and the ~25px quantization argument
+  in `PLAN.md` applies to multi-thousand-pixel photos this repository cannot carry. Recorded as a
+  measurement, not as proof that refinement is better: there is no ground truth here.
+  Not done, and flagged on the issue: **hand-annotated boundary-quality fixtures.** They require
+  either photographs of real people in a public repo, which the project rules forbid, or synthetic
+  data that would not measure real segmentation quality. Boundary IoU itself is implemented and
+  tested against synthetic shapes with known answers; the fixtures need a decision first.
+  Follow-up on the fixtures question: **local-only, in a gitignored `fixtures/`.** The framing in
+  the PR was wrong and was corrected — privacy was never the blocker. The photo never needs
+  committing (`bus.jpg` ships inside the installed `ultralytics` package, and the repo tracks zero
+  images), and a hand-annotated ground-truth *mask* is a binary silhouette, not a photograph. The
+  real distinction is narrower: a gitignored fixture is visible to one machine, so a metric reading
+  one is a local tool rather than a regression gate; committing it is what would make it
+  CI-checkable. Deferred because there is no CI yet (#15) and no hand annotation exists — and
+  scoring a segmenter against ground truth produced by a segmenter would be circular, so generating
+  one was not an option.

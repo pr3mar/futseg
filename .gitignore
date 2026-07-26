@@ -160,6 +160,13 @@ input/*
 outputs/
 out/
 samples/
+
+# Boundary-quality fixtures (image + hand-annotated ground-truth mask) for the
+# metrics in metrics.py. Local-only on purpose: committing a fixture is what
+# would turn boundary IoU into a CI gate, and there is no CI yet (#15) and no
+# hand annotation to gate against. Scoring a model against a mask produced by a
+# model would be circular. Revisit when #15 lands.
+fixtures/
 *.out.png
 *.out.jpg
 
