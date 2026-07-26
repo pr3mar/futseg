@@ -7,10 +7,13 @@ in place as understanding changes — keep it consistent, not just additive.
 
 ## Conventions
 
-- **Development happens inside the container.** `make build` once, then `make shell`/`test`/`lint`/
-  `cuda`. There is no host virtualenv, no host Python, and nothing to activate; the only host
-  requirement is docker with GPU support. See
+- **Development happens inside the container.** `make build` once, then `make check` / `shell` /
+  `cuda`; `make help` lists everything. There is no host virtualenv, no host Python, and nothing to
+  activate; the only host requirement is docker with GPU support. See
   `docs/design/2026-07-25-container-first-development.md`.
+- **`make up` is optional.** Task targets `exec` into a resident container when one is running and
+  fall back to a one-off `run --rm` otherwise, so `make test` behaves the same either way. Keep one
+  resident (`make up`) when you want a shell and an IDE sharing the same container.
 - Package management: `uv` only (`uv sync`, `uv run ...`). No `pip install` / `poetry` / raw `venv`.
 - **The virtualenv lives at `/opt/venv`, outside the bind-mounted source.** An in-tree `.venv`
   inside a bind mount is written back to the host, where it collides with anything the host built

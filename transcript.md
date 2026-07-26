@@ -367,3 +367,11 @@ details, no machine/hardware specifics, no credentials. This repo is public.
     it back from a fresh container, and by importing a module that did not exist at build time.
     Rejected: `PYTHONPATH=/workspace/src`, which needs no COPY at all but discards distribution
     metadata and console scripts, and contradicts the src-layout rationale already recorded here.
+  - **Makefile grew container lifecycle targets** (`up`, `down`, `restart`, `ps`, `logs`, `rebuild`,
+    `exec`), grouped in `make help` by section. Task targets now route through one helper that
+    `exec`s into a resident container when `make up` has been run and falls back to a one-off
+    `run --rm` otherwise. Chosen over two parallel sets of targets (one for each mode), which would
+    double the surface to document and let the two drift; and over always using `run --rm`, which
+    would ignore the container an IDE is attached to. Verified in both modes, including a
+    before/after count of running containers to confirm the resident one is genuinely reused rather
+    than a second being spawned silently.

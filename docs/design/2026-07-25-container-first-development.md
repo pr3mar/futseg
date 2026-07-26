@@ -142,9 +142,15 @@ because the working tree may be checked out on a Windows filesystem.
 
 ### Entry points
 
-`make` drives the container: `build`, `shell`, `sync`, `lint`, `test`, `check`, `cuda`, `gpu`,
-`clean`, `clean-cache`. The environment is a property of the command, which was the goal the
-Makefile guards were reaching for and could not reach while the toolchain lived on the host.
+`make` drives the container, grouped as image (`build`, `rebuild`), lifecycle (`up`, `down`,
+`restart`, `ps`, `logs`), working inside (`shell`, `exec`, `sync`), checks (`lint`, `test`, `check`,
+`cuda`, `gpu`) and cleanup (`clean`, `clean-cache`). The environment is a property of the command,
+which was the goal the Makefile guards were reaching for and could not reach while the toolchain
+lived on the host.
+
+Task targets work identically whether or not a container is resident: they `exec` into the one
+`make up` started, and fall back to a one-off `run --rm` when there is none. One code path to
+remember instead of two, and a resident container shared with whatever the IDE is attached to.
 
 ## Deleted with the superseded design
 
