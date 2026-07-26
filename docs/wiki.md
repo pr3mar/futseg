@@ -150,6 +150,14 @@ in place as understanding changes — keep it consistent, not just additive.
 - **`resolve_cache_dir` uses `Path.absolute()`, not `.resolve()`.** Absolute is required so a
   relative override cannot drop weights beside the CWD, but resolving symlinks would silently
   rewrite a path the caller passed in.
+- **`YoloSegmenter` filters the person class in our code, not via the `classes=` predict kwarg.**
+  The kwarg would work, but the guarantee then lives in a library keyword whose behaviour could
+  change unnoticed; filtering on `boxes.cls` is what the tests can actually exercise.
+- **Its `imgsz` defaults to 1280, above the ultralytics default of 640.** The prototype stride is
+  what limits this tier (`PLAN.md`), so the larger input is the only lever that helps.
+- **Slow tests use `ultralytics.utils.ASSETS / "bus.jpg"`.** It ships inside the installed package
+  and contains people, so real-model tests need no committed image fixture and raise no licensing
+  or privacy question for a public repo.
 - **Score mask quality with boundary IoU, not plain IoU.** Plain IoU is dominated by the torso and
   barely moves when the hair is wrong, making it useless as a signal for the thing this project
   actually cares about.

@@ -46,10 +46,12 @@ What that means concretely:
 Scaffolding landed (#2/#19) and core abstractions landed (#3): the `Segmenter`/`Inpainter`
 protocols, `io.py`, `device.py`, `paths.py` and `masking.py` (including the two-mask derivation and
 its `inpaint_grow > composite_shrink + feather_radius` guard) are implemented and unit-tested.
-Still docstring-only: `pipeline.py`, `cli.py`, and every concrete backend under `segmentation/` and
-`inpaint/`. The intended architecture is specified in `PLAN.md`, with the platform contract in
+The YOLO11-seg fast tier landed too (#4): `segmentation/yolo.py` implements `Segmenter`, with a
+`@pytest.mark.slow` test running the real model. Still docstring-only: `pipeline.py`, `cli.py`,
+`segmentation/refined.py`, and both inpainting backends. The intended architecture is specified in
+`PLAN.md`, with the platform contract in
 `docs/design/2026-07-25-container-first-development.md`, and tracked as GitHub issues/milestones on
-`pr3mar/futseg`. Issue #4 (YOLO11-seg fast tier, milestone 3) is next.
+`pr3mar/futseg`. Issue #10 (SAM2 refinement, the *default* tier, milestone 4) is next.
 
 Commands: `make build` once, then `make check` (lint + tests), `make shell`, `make cuda`. All run
 in the container.
