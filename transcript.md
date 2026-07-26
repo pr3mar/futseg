@@ -403,6 +403,28 @@ details, no machine/hardware specifics, no credentials. This repo is public.
     would duplicate policy the architecture puts in one place.
   - A test asserts `inspect.signature(Inpainter.inpaint)` is exactly `(self, image, mask)`, so the
     "no prompt argument" rule fails a test rather than only a review comment.
+- **Segmentation fast tier (#4), milestone 3.** `segmentation/yolo.py` implementing `Segmenter` with
+  YOLO11-seg, person-class filtering and instance union. Built test-first with an injected fake
+  model, so the fast suite needs no weights.
+  Decisions:
+  - **Person filtering happens on `boxes.cls` in our code, not through ultralytics' `classes=`
+    predict argument.** The kwarg would be marginally faster, but the guarantee would then live in a
+    library keyword whose behaviour could change without us noticing, and a test asserting "we
+    passed `classes=[0]`" proves nothing about the output. Filtering explicitly is what the tests
+    can exercise. Rejected doing both as belt-and-braces: two mechanisms for one rule.
+  - **`imgsz` defaults to 1280 rather than ultralytics' 640.** `PLAN.md` calls for a larger input on
+    this tier because the 1/4-stride prototype masks are the binding limit; the larger input is the
+    only lever that moves.
+  - **Masks are resized to the image if the model returns another resolution.** `retina_masks=True`
+    should already return original-resolution masks, but a silent shape mismatch would corrupt the
+    two-mask derivation downstream, and the resize is one line.
+  - **The slow test uses `ultralytics.utils.ASSETS / "bus.jpg"`.** It ships inside the installed
+    package and contains people, so there is no image fixture to commit and no licensing or privacy
+    question in a public repo. It asserts people are actually found, so the mask-parsing path is
+    exercised rather than the empty-result shortcut a synthetic image would take.
+  Verified against the real library, not only the fake: `yolo11n-seg.pt` downloaded into
+  `/cache/futseg/weights/` and `find /workspace -name '*.pt'` came back empty — `paths.py` does keep
+  ultralytics out of the working directory, which until now was only an intention.
 - **Specified `futseg segment` as a first-class command (#24).** Design only; no CLI code, which
   stays in #7.
   Trigger: a request for "a script to segment an arbitrary photo". I wrote one
