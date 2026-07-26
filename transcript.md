@@ -622,3 +622,14 @@ details, no machine/hardware specifics, no credentials. This repo is public.
   matting work exists for. Part of #28 is the known binary-mask gap surfacing concretely rather than
   a segmentation bug to tune away. Untried and still plausible: `multimask_output=True` with a
   selection criterion, since the failure pattern looks like mask *selection*, not mask quality.
+- **Per-model sampler defaults (#33).** `ModelSpec` gains `steps`, `guidance_scale` and `strength`;
+  `DiffusionInpainter` takes `None` to mean "whatever this checkpoint wants" and an explicit value
+  still wins, so `--steps` stays useful. `futseg run` gains `--steps` and `--guidance-scale`.
+  The trigger was FLUX.2 klein logging `Guidance scale 7.0 is ignored for step-wise distilled
+  models` on every generation. Its model card asks for `num_inference_steps=4, guidance_scale=1.0`;
+  we were running 28 steps with a guidance value the model discards. Note that `diffusers`' own
+  class defaults (50 steps, guidance 8.0) contradict the checkpoint's card, so there is no correct
+  global fallback to lean on — which is the argument for putting it in the registry.
+  Measured on `IMG_7170`, model already loaded: **4 steps 4.2s against 28 steps 9.2s**, and the
+  4-step run also paid the one-off triton JIT compile, so the true ratio is better than 2.2x.
+  Quality at 4 steps is not merely acceptable, it is the best output produced so far.

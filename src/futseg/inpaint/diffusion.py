@@ -39,6 +39,12 @@ class ModelSpec:
     variant: str | None = None
     #: Whether the repo requires accepting a licence and a Hub token.
     gated: bool = False
+    #: Sampler settings are per-checkpoint, not global. A step-distilled model
+    #: wants a handful of steps and guidance 1.0; a conventional one wants tens
+    #: of steps and guidance around 7.5. One default cannot serve both.
+    steps: int = 28
+    guidance_scale: float = 7.5
+    strength: float = 0.99
 
 
 def _mask_conditioned_kwargs(
@@ -85,6 +91,12 @@ REGISTRY: dict[str, ModelSpec] = {
         native_res=1024,
         license="apache-2.0",
         to_kwargs=_mask_conditioned_kwargs,
+        # From the model card: "our fastest distilled model for sub-second image
+        # generation", guidance_scale=1.0, num_inference_steps=4. Note that
+        # diffusers' own class defaults (50 steps, guidance 8.0) contradict the
+        # checkpoint, so there is no correct global fallback.
+        steps=4,
+        guidance_scale=1.0,
     ),
     # Purpose-built mask inpainting, ungated, and the cheapest realistic option
     # at native 1024: 6.5 GB with the fp16 variant against 14.9 GB for klein.
@@ -95,6 +107,8 @@ REGISTRY: dict[str, ModelSpec] = {
         license="openrail++",
         to_kwargs=_sdxl_kwargs,
         variant="fp16",
+        steps=28,
+        guidance_scale=7.5,
     ),
     # Comparison only: 512 native is the quality bottleneck. 2.6 GB, which makes
     # it the practical choice for exercising the backend end to end.
@@ -105,6 +119,9 @@ REGISTRY: dict[str, ModelSpec] = {
         license="creativeml-openrail-m",
         to_kwargs=_mask_conditioned_kwargs,
         variant="fp16",
+        steps=28,
+        guidance_scale=7.5,
+        strength=1.0,
     ),
 }
 
@@ -138,9 +155,9 @@ class DiffusionInpainter:
         device: str,
         prompt: str,
         model: str = DEFAULT_MODEL,
-        guidance_scale: float = 7.0,
-        strength: float = 0.99,
-        steps: int = 28,
+        guidance_scale: float | None = None,
+        strength: float | None = None,
+        steps: int | None = None,
         pipeline: object | None = None,
     ) -> None:
         if model not in REGISTRY:
@@ -148,9 +165,11 @@ class DiffusionInpainter:
         self.spec = REGISTRY[model]
         self.device = device
         self.prompt = prompt
-        self.guidance_scale = guidance_scale
-        self.strength = strength
-        self.steps = steps
+        # None means "whatever this checkpoint wants"; an explicit value wins, so
+        # --steps stays useful for experimenting.
+        self.guidance_scale = self.spec.guidance_scale if guidance_scale is None else guidance_scale
+        self.strength = self.spec.strength if strength is None else strength
+        self.steps = self.spec.steps if steps is None else steps
         # Point the HF caches at the futseg cache dir before anything downloads.
         self.cache_dir: Path = configure_caches()
         self._pipeline = pipeline

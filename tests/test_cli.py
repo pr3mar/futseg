@@ -56,11 +56,13 @@ def _stub_backends(monkeypatch: pytest.MonkeyPatch):
         built["segmenter_device"] = device
         return StubSegmenter()
 
-    def fake_inpainter(backend, device, prompt, model, **kwargs):
+    def fake_inpainter(backend, device, prompt, model, steps=None, guidance_scale=None, **kwargs):
         built["backend"] = backend
         built["inpainter_device"] = device
         built["prompt"] = prompt
         built["model"] = model
+        built["steps"] = steps
+        built["guidance_scale"] = guidance_scale
         return StubInpainter()
 
     monkeypatch.setattr(cli, "_build_segmenter", fake_segmenter)
@@ -282,3 +284,26 @@ def test_weights_dir_overrides_the_cache_location(
     )
 
     assert str(weights) in os.environ["HF_HOME"]
+
+
+def test_run_leaves_sampler_settings_to_the_model_by_default(tmp_path: Path, _stub_backends) -> None:
+    """None means "whatever this checkpoint wants" (#33), not a global number."""
+    runner.invoke(
+        cli.app,
+        ["run", str(photo_at(tmp_path / "s.jpg")), "--prompt", "p",
+         "--out", str(tmp_path / "o.png")],
+    )
+
+    assert _stub_backends["steps"] is None
+    assert _stub_backends["guidance_scale"] is None
+
+
+def test_run_passes_explicit_sampler_overrides_through(tmp_path: Path, _stub_backends) -> None:
+    runner.invoke(
+        cli.app,
+        ["run", str(photo_at(tmp_path / "s.jpg")), "--prompt", "p",
+         "--out", str(tmp_path / "o.png"), "--steps", "9", "--guidance-scale", "2.5"],
+    )
+
+    assert _stub_backends["steps"] == 9
+    assert _stub_backends["guidance_scale"] == 2.5

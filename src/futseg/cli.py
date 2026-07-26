@@ -43,7 +43,14 @@ def _build_segmenter(quality: str, device: str):
     return RefinedSegmenter(device=device)
 
 
-def _build_inpainter(backend: str, device: str, prompt: str, model: str):
+def _build_inpainter(
+    backend: str,
+    device: str,
+    prompt: str,
+    model: str,
+    steps: int | None = None,
+    guidance_scale: float | None = None,
+):
     """Construct an inpainter with prompt and sampler settings injected here.
 
     The `Inpainter` protocol takes no prompt, so this is the only place it can
@@ -56,7 +63,11 @@ def _build_inpainter(backend: str, device: str, prompt: str, model: str):
         return BlurInpainter()
     from futseg.inpaint.diffusion import DiffusionInpainter
 
-    return DiffusionInpainter(device=device, prompt=prompt, model=model)
+    # None lets each checkpoint's own sampler defaults apply (#33); a value given
+    # on the command line wins.
+    return DiffusionInpainter(
+        device=device, prompt=prompt, model=model, steps=steps, guidance_scale=guidance_scale
+    )
 
 
 def _overlay(photo: Image.Image, alpha: Alpha, strength: float = 0.45) -> Image.Image:
@@ -162,6 +173,12 @@ def run(
     model: Annotated[str, typer.Option(help="diffusion registry key")] = "flux2-klein",
     device: Annotated[str, typer.Option(help="auto|cuda|cpu")] = "auto",
     weights_dir: Annotated[Path | None, typer.Option(help="override the cache location")] = None,
+    steps: Annotated[
+        int | None, typer.Option(help="sampler steps; default is per-model")
+    ] = None,
+    guidance_scale: Annotated[
+        float | None, typer.Option(help="guidance scale; default is per-model")
+    ] = None,
 ) -> None:
     """Replace the background of a photo, keeping the subject pixel-identical."""
     if quality not in QUALITIES:
@@ -178,7 +195,7 @@ def run(
         typer.secho(f"{image.name}: no person found", fg=typer.colors.RED, err=True)
         raise typer.Exit(1)
 
-    inpainter = _build_inpainter(backend, resolved, prompt, model)
+    inpainter = _build_inpainter(backend, resolved, prompt, model, steps, guidance_scale)
     result = pipeline.run(photo, segmenter=segmenter, inpainter=inpainter)
     save_image(result, out)
     typer.echo(f"{image.name} -> {out}")
