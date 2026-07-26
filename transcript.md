@@ -517,3 +517,42 @@ details, no machine/hardware specifics, no credentials. This repo is public.
   - **`k`/`j`/`feather` are absolute pixels, so behaviour is resolution-dependent.** `j=3` trims ~10%
     of subject area at 810x1080 and would be negligible at 4000px. Tuned on the small image, which
     errs conservative, but scaling with the image diagonal is unresolved and belongs with #7.
+- **Generative inpainting backend (#6), milestone 6.** `inpaint/diffusion.py`: a `ModelSpec`
+  registry with per-model `to_kwargs` adapters, and `DiffusionInpainter` implementing `Inpainter`.
+  Both the issue and `PLAN.md` insisted the kwargs be verified against the installed `diffusers`
+  rather than assumed. Doing so corrected two errors in the plan and one of my own:
+  - **`black-forest-labs/FLUX.2-klein` does not exist.** The real repo is `FLUX.2-klein-4B`
+    (Apache-2.0, ungated, ~22 GB). Sibling naming is a trap: `FLUX.2-klein-9B` is gated and
+    `license:other`, despite being the same family.
+  - **`Flux2Pipeline` has no `mask_image` parameter** — it is instruction-driven whole-canvas
+    editing. The plan named it as the FLUX.2 entry, which would have regenerated the entire frame
+    and ignored the inpaint mask. The correct class is `Flux2KleinInpaintPipeline`, which does take
+    `mask_image` and `strength`. I briefly concluded FLUX.2 could not inpaint at all before finding
+    that class; the first conclusion was wrong because I had probed only `Flux2Pipeline`.
+  - **`stabilityai/stable-diffusion-2-inpainting` no longer exists.** Replaced with
+    `stable-diffusion-v1-5/stable-diffusion-inpainting`, still comparison-only.
+  - The plan expected FLUX.2 and SDXL to have incompatible signatures, making `to_kwargs`
+    load-bearing. They actually agree on the core (`prompt`/`image`/`mask_image`/`strength`/
+    `guidance_scale`); they differ only in extras. The adapter stays per-model, but the plan
+    overstated the gap.
+  Decisions:
+  - **The registry is verified without downloading anything.** One test asserts each `pipeline_cls`
+    exists in the installed `diffusers`; another asserts every kwarg an adapter emits appears in
+    that class's real `__call__` signature. Both failure modes otherwise surface only after
+    multi-GB weights have downloaded and loaded — the most expensive possible moment.
+  - **Never upscale to the native canvas.** `_fit_within` scales down only; enlarging a small photo
+    to 1024 invents detail and spends generation time for nothing.
+  - Nothing has been run against real weights yet: the smallest usable checkpoint is several GB and
+    no tiny inpaint pipeline exists on the Hub (only tiny text2img ones), so that is a deliberate,
+    disclosed gap rather than an oversight.
+  - **`ModelSpec` gained `variant` and `gated`.** Found while comparing Stable Diffusion options:
+    `from_pretrained(repo, torch_dtype=float16)` does **not** fetch fp16 weights — it downloads the
+    fp32 files and casts them in memory. `variant="fp16"` is what selects the small download. For
+    `sdxl-inpaint` that is 6.5 GB against roughly 13 GB, so the omission was a silent doubling of
+    every download for repos that publish fp16. The variant is per-repo (FLUX.2-klein-4B publishes
+    none, and requesting one that does not exist fails the load), which is exactly the kind of fact
+    the registry should carry rather than the loading code assume. `gated` is declared for the same
+    reason: a gated entry cannot load without a Hub token, and that should be visible in the
+    registry rather than discovered as a 401 after the user selects it.
+    Real fp16 download sizes, measured from the Hub file listing rather than the repo totals which
+    include fp32 duplicates: sd15-inpaint 2.6 GB, sdxl-inpaint 6.5 GB, flux2-klein-4B 14.9 GB.

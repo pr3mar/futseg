@@ -128,7 +128,7 @@ swapping models is a config change rather than a code change:
 ```python
 @dataclass(frozen=True)
 class ModelSpec:
-    repo_id: str            # e.g. "black-forest-labs/FLUX.2-klein"
+    repo_id: str            # e.g. "black-forest-labs/FLUX.2-klein-4B"
     pipeline_cls: str       # diffusers class, imported lazily
     native_res: int         # canvas size the model was trained for
     license: str            # "apache-2.0" | "flux-noncommercial" | "openrail"
@@ -145,7 +145,7 @@ model IDs to strings would not actually make them interchangeable. Registry entr
 | **FLUX.2 [klein] 4B** (default) | 1024+ | **Apache 2.0** | Unified generate/edit/inpaint in one checkpoint; fast on consumer GPUs; commercially clean |
 | FLUX.2 [dev] 32B | 1024+ | FLUX non-commercial | Highest quality; needs 4-bit quantization (`bitsandbytes`) to fit a consumer GPU |
 | SDXL-inpaint | 1024 | OpenRAIL | `diffusers/stable-diffusion-xl-1.0-inpainting-0.1`; mature, dedicated mask inpainting |
-| SD2-inpaint | 512 | permissive | Legacy/comparison only — 512 native is the quality bottleneck |
+| SD1.5-inpaint | 512 | openrail-m | Legacy/comparison only — 512 native is the quality bottleneck. Replaces SD2-inpaint, whose repo no longer exists |
 
 Default is **FLUX.2 [klein]**: it is the newest generation, permissively licensed (unlike
 FLUX.2 [dev] and FLUX.1 Fill, both non-commercial), and handles masked inpainting in the
