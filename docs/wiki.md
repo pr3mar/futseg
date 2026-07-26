@@ -76,14 +76,26 @@ in place as understanding changes — keep it consistent, not just additive.
   `composite_alpha = feather(erode(alpha, j))`, with `k > j + feather_radius`. Same source,
   opposite offsets. Conflating them leaves a rim of stale original background at the silhouette.
 - **Inpainting backend is a `ModelSpec` registry** (`inpaint/diffusion.py`), not a single
-  hardcoded checkpoint, so models are swappable via `--model`. The registry's `to_kwargs` adapter
-  is load-bearing: FLUX.2 (`Flux2Pipeline`, instruction/reference-driven) and SDXL-inpaint
-  (classic mask-conditioned) do **not** share a call signature, so an ID-only mapping would not
-  make them interchangeable.
-- **Default model is FLUX.2 [klein] 4B** — Apache 2.0, handles inpainting in the same weights.
-  FLUX.2 [dev] 32B and FLUX.1 Fill are both non-commercial (and dev-32B needs 4-bit quantization
-  to fit a consumer GPU); SDXL-inpaint and SD2-inpaint remain in the registry as alternatives.
+  hardcoded checkpoint, so models are swappable via `--model`. Verified against the installed
+  `diffusers` at #6, which corrected two guesses: `Flux2KleinInpaintPipeline` *is* mask-conditioned
+  and shares the core call signature with `StableDiffusionXLInpaintPipeline`
+  (`prompt`/`image`/`mask_image`/`strength`/`guidance_scale`). The adapter is still per-model
+  because the *extras* differ — FLUX.2 has `image_reference`, SDXL has `negative_prompt` — but the
+  gap is narrower than the plan assumed.
+- **Use `Flux2KleinInpaintPipeline`, never `Flux2Pipeline`, for inpainting.** `Flux2Pipeline` has no
+  `mask_image` parameter at all: it is instruction-driven whole-canvas editing. Selecting it would
+  regenerate the entire frame and silently ignore the mask.
+- **Default model is FLUX.2 [klein] 4B**, repo `black-forest-labs/FLUX.2-klein-4B` — Apache 2.0 and
+  **ungated**, so it needs no Hub token. Note the repo id: plain `FLUX.2-klein` does not exist, and
+  `FLUX.2-klein-9B` is gated and non-commercial despite the sibling naming. FLUX.2 [dev] (~165 GB)
+  and FLUX.1 Fill are gated and non-commercial. SDXL-inpaint (ungated, openrail++) is the
+  alternative; **SD2-inpaint was dropped — `stabilityai/stable-diffusion-2-inpainting` no longer
+  exists** — replaced by `stable-diffusion-v1-5/stable-diffusion-inpainting` for comparison only.
   Per-model licenses must be listed in the README.
+- **Registry entries are verified in the fast suite, without downloading weights.** One test asserts
+  each `pipeline_cls` exists in the installed `diffusers`; another asserts every kwarg an adapter
+  emits appears in that class's real `__call__` signature. Both failure modes otherwise surface only
+  after multi-GB weights have downloaded and loaded.
 - **Resolution strategy (v1)**: downscale the canvas to the model's native resolution, inpaint,
   upscale the *generated background*, then composite the **full-resolution** person on top. The
   person never passes through a resize/generate round-trip; the softer background is an accepted,
