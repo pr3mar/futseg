@@ -600,3 +600,25 @@ details, no machine/hardware specifics, no credentials. This repo is public.
   **Half of #28 remains open.** Worn occluders — seatbelts, bag straps — cross the silhouette and
   reach the frame edge, so they are legitimately reachable and hole filling cannot touch them. That
   needs a different approach and the issue stays open for it.
+  **Three follow-up attempts measured and rejected, recorded so they are not retried blind.**
+  Baseline for all of them: `sam2_b` + `fill_holes`, 84.68% coverage of `IMG_7170`'s glasses region,
+  which is where the face was reported half covered.
+  - **Raising `max_hole_ratio` does nothing at any value.** Counted the background components: 253
+    enclosed regions totalling 15,757 px, all already filled at the shipped 0.005, and 5
+    border-touching components totalling 1,088,627 px of which one is 1,086,553. The striped strip
+    and the lens interiors belong to that giant component — they reach the frame edge through thin
+    channels, so they are topologically outside the subject however enclosed they look, and
+    connectivity filling cannot reach them at any threshold.
+  - **`sam2_l` is worse than `sam2_b`**: subject 48.74% → 33.90%, glasses region 80.28% → 53.19%.
+    Upgrading the checkpoint was the obvious move and is measurably the wrong one.
+  - **Box + interior point prompts is worse and inconsistent.** Implemented with tests, measured,
+    reverted: glasses region 84.68% → 71.21% at one point, 51.20% at three. On another photo one
+    point *helped* (47.88% → 55.60%), which argues against shipping it more strongly than a uniform
+    regression would, because the effect is unpredictable per image. Reverted entirely rather than
+    left behind a disabled-by-default flag: dead code plus tests, carrying a technique that
+    measurably hurts, is worse than a recorded negative result.
+  Conclusion drawn rather than another knob: **a transparent lens is not a hole, it is a
+  semi-transparent region** — precisely what a binary mask cannot represent and what the deferred
+  matting work exists for. Part of #28 is the known binary-mask gap surfacing concretely rather than
+  a segmentation bug to tune away. Untried and still plausible: `multimask_output=True` with a
+  selection criterion, since the failure pattern looks like mask *selection*, not mask quality.

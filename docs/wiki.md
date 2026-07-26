@@ -114,6 +114,20 @@ in place as understanding changes — keep it consistent, not just additive.
   documented v1 tradeoff. Tiling / super-resolution are deferred.
 - The pipeline always does a final feathered composite of the original person over the backend
   output, so the person is never altered by the generative model, even at the mask boundary.
+- **Measured and rejected for mask holes (#28) — do not re-try these without new evidence.** All
+  three were plausible, and all three are worse than the shipped `sam2_b` + `fill_holes`, judged on
+  `IMG_7170`'s glasses region (84.68% covered at baseline):
+  | Attempt | Result |
+  |---|---|
+  | Raise `max_hole_ratio` | **No effect at any value.** 0.005 already fills every enclosed region; the rest is one border-connected component. |
+  | `sam2_l` instead of `sam2_b` | **Much worse**: subject 48.74% → 33.90%, glasses region → 53.19%. Bigger is not better here. |
+  | Box + interior point prompts | **Worse and inconsistent**: glasses region 71.21% at 1 point, 51.20% at 3. Helped a different photo, hurt this one. |
+  Morphological closing gains +0.6pp on that region but thickens the whole silhouette and can weld
+  an arm to a torso — not obviously worth it. Untried: `multimask_output=True` with a selection
+  criterion, since the failure looks like mask *selection* rather than mask quality.
+- **A transparent lens is not a hole, it is a semi-transparent region** — exactly what a binary mask
+  cannot represent, and exactly what the deferred matting work is for. Some of #28 is the known
+  binary-mask gap resurfacing concretely, not a segmentation bug to tune away.
 - **Alpha matting is deferred, and the pixel-perfect bar is therefore not yet met.** Binary masks
   cannot represent semi-transparent hair. The trimap for a future matting stage comes free from the
   existing dilate/erode band. Until it lands, the README must say so rather than overclaim — see
