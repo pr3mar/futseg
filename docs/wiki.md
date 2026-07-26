@@ -215,6 +215,17 @@ in place as understanding changes — keep it consistent, not just additive.
   same 3px is negligible on a 4000px portrait. Defaults were tuned on a small image, which is the
   conservative direction, but scaling them with the image diagonal is unresolved — see #7, where the
   CLI exposes them.
+- **`fill_holes` is area-bounded, and that bound is the whole design.** Segmenters leave pinholes —
+  speckle across a sleeve, the interior of glasses — that the generated background paints through.
+  The obvious fix, "anything the frame border cannot reach is subject", is **wrong**: a hand on a hip
+  encloses genuine background that is equally unreachable, and filling it welds the arm to the torso.
+  So only regions below `max_hole_ratio` of the subject's area are filled. The threshold is a
+  *fraction*, not a pixel count, because the same 16 px is noise on a 40 MP photo and a real gap on a
+  thumbnail. Measured on a real photo: 1.5% of subject area recovered at IoU 0.985 against the raw
+  mask — surgical rather than a blob.
+- **Hole filling does not fix worn occluders.** Seatbelts and bag straps cross the silhouette and
+  reach the frame edge, so they are legitimately reachable and stay excluded. That half of #28 is
+  still open and needs a different approach.
 - **Score mask quality with boundary IoU, not plain IoU.** Plain IoU is dominated by the torso and
   barely moves when the hair is wrong, making it useless as a signal for the thing this project
   actually cares about.

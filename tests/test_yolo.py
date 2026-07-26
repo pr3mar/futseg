@@ -194,3 +194,14 @@ def test_real_model_finds_people_in_a_real_photo() -> None:
     assert alpha.any(), "expected at least one person in bus.jpg"
     # A handful of pedestrians, not the whole frame.
     assert 0.01 < alpha.mean() < 0.6
+
+
+def test_pinholes_in_the_mask_are_filled() -> None:
+    """Same defect as the refined tier: small enclosed regions are noise (#28)."""
+    holed = instance(10, 50).copy()
+    holed[20, 20] = 0.0
+    model = FakeModel(np.stack([holed]), classes=[PERSON_CLASS])
+
+    alpha = YoloSegmenter(device="cpu", model=model).segment(image())
+
+    assert alpha[20, 20] == 1.0

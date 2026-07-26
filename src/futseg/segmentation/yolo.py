@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from futseg.masking import Alpha, union
+from futseg.masking import Alpha, fill_holes, union
 from futseg.paths import weights_dir
 
 #: COCO class index for "person".
@@ -35,6 +35,7 @@ class YoloSegmenter:
         weights: str = DEFAULT_WEIGHTS,
         imgsz: int = 1280,
         confidence: float = 0.25,
+        fill_mask_holes: bool = True,
         model: object | None = None,
     ) -> None:
         """
@@ -47,6 +48,7 @@ class YoloSegmenter:
         self.device = device
         self.imgsz = imgsz
         self.confidence = confidence
+        self.fill_mask_holes = fill_mask_holes
         self.weights_path = weights_dir() / weights
         self._model = model
 
@@ -95,4 +97,7 @@ class YoloSegmenter:
         alpha = union(people)
         if alpha.shape != (height, width):
             alpha = cv2.resize(alpha, (width, height), interpolation=cv2.INTER_LINEAR)
+        # After resizing, so the area threshold is measured at output scale.
+        if self.fill_mask_holes:
+            alpha = fill_holes(alpha)
         return np.ascontiguousarray(alpha, dtype=np.float32)

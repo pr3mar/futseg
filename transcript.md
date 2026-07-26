@@ -575,3 +575,28 @@ details, no machine/hardware specifics, no credentials. This repo is public.
   Verified through the installed console script, not just `CliRunner`: `which futseg` resolves to
   `/opt/venv/bin/futseg`, `futseg segment` writes all five artefacts, `futseg run --backend
   composite` produces an image, a person-free photo exits 1, and a missing file exits 2.
+- **Mask hole filling (#28, part one).** `masking.fill_holes`, wired into both segmenters and on by
+  default. Raised to priority: high at the project owner's request after the FLUX.2 run made the
+  defect the visible limiter on output quality rather than a footnote.
+  Decisions:
+  - **The fill is bounded by area, and that bound is the design, not a tuning knob.** The obvious
+    implementation — flood-fill from the frame border, treat everything unreachable as subject — is
+    wrong: a hand on a hip encloses genuine background that the border cannot reach either, so
+    connectivity alone would weld the arm to the torso. Only regions below `max_hole_ratio` of the
+    subject's own area are filled. There is a dedicated test for the large-enclosed-gap case, which
+    is the one that fails a naive implementation.
+  - **The threshold is a fraction of subject area, not an absolute pixel count**, because the same
+    16 px is noise on a 40 MP photo and a real gap on a thumbnail. A test pins that the same hole
+    resolves differently at two image scales.
+  - **Applied after the resize**, so the threshold is measured at output scale rather than at
+    whatever resolution the model happened to return.
+  - **Soft alpha is preserved**: only pixels inside a filled hole are written, so the feathered
+    values the deferred matting stage will produce survive untouched. Tested.
+  Measured on the photographs that exposed the defect, not on synthetic shapes alone:
+  IMG_7170 recovered 15,757 px (1.501% of subject) at IoU 0.9852 against the raw mask; IMG_7053
+  recovered 274 px (0.042%) at IoU 0.9996. Surgical, not a blob — and confirmed visually: the
+  raised hand, the glasses lenses and the sleeve speckle fill, while the seatbelts and the gaps
+  between people stay open.
+  **Half of #28 remains open.** Worn occluders — seatbelts, bag straps — cross the silhouette and
+  reach the frame edge, so they are legitimately reachable and hole filling cannot touch them. That
+  needs a different approach and the issue stays open for it.
