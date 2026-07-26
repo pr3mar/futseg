@@ -139,6 +139,17 @@ in place as understanding changes — keep it consistent, not just additive.
   than a bare `uv` on the host — this cost 4 GB once already.
 - **`.gitattributes` forces LF.** A CRLF entrypoint fails inside a container as
   `bad interpreter: /bin/bash^M`, and the working tree may be checked out on a Windows filesystem.
+- **`derive_masks` raises rather than producing a haloed image.** `inpaint_grow` must exceed
+  `composite_shrink + feather_radius`; at equality the softened composite edge reaches exactly as
+  far as the regenerated region and original pixels show through the partially transparent border.
+  The check is in `masking.py`, not in the caller, so no backend can get it wrong quietly.
+- **`union` takes a per-pixel maximum, never a sum.** Overlapping instances in a multi-person photo
+  would otherwise exceed 1.0 and clip into a hard-edged blob.
+- **`paths.configure_caches` sets `HF_HOME` with `setdefault`.** The container already points it at
+  the mounted `/cache` volume; overwriting it would send multi-GB downloads somewhere unmounted.
+- **`resolve_cache_dir` uses `Path.absolute()`, not `.resolve()`.** Absolute is required so a
+  relative override cannot drop weights beside the CWD, but resolving symlinks would silently
+  rewrite a path the caller passed in.
 - **Score mask quality with boundary IoU, not plain IoU.** Plain IoU is dominated by the torso and
   barely moves when the hair is wrong, making it useless as a signal for the thing this project
   actually cares about.
