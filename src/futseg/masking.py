@@ -73,6 +73,46 @@ def union(alphas: Sequence[Alpha]) -> Alpha:
     return _as_alpha(np.maximum.reduce([_as_alpha(a) for a in alphas]))
 
 
+def fill_holes(alpha: Alpha, max_hole_ratio: float = 0.005, threshold: float = 0.5) -> Alpha:
+    """Fill small enclosed background regions inside the subject.
+
+    Segmenters leave pinholes — speckle across a sleeve, the interior of a pair
+    of glasses — and the generated background paints straight through them.
+
+    Bounded by area on purpose. The naive fix, "anything the border cannot reach
+    is subject", also swallows a hand-on-hip triangle, which is genuine
+    background fully enclosed by the silhouette. `max_hole_ratio` is a fraction
+    of the subject's own area rather than an absolute pixel count, because the
+    same 16 pixels are noise on a 40 MP photo and a real gap on a thumbnail.
+
+    Pass `max_hole_ratio=0.0` to disable. Soft alpha values are preserved: only
+    pixels inside a filled hole are set, so a feathered edge survives untouched.
+    """
+    alpha = _as_alpha(alpha)
+    if max_hole_ratio <= 0.0:
+        return alpha
+
+    subject = (alpha >= threshold).astype(np.uint8)
+    subject_area = int(subject.sum())
+    if subject_area == 0:
+        return alpha
+
+    # Label the background; anything not connected to the frame edge is enclosed.
+    background = (1 - subject).astype(np.uint8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(background, connectivity=4)
+
+    border = set(labels[0, :]) | set(labels[-1, :]) | set(labels[:, 0]) | set(labels[:, -1])
+    budget = max_hole_ratio * subject_area
+
+    filled = alpha.copy()
+    for label in range(1, count):
+        if label in border:
+            continue
+        if stats[label, cv2.CC_STAT_AREA] <= budget:
+            filled[labels == label] = 1.0
+    return _as_alpha(filled)
+
+
 def derive_masks(
     alpha: Alpha,
     *,

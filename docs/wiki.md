@@ -114,6 +114,20 @@ in place as understanding changes — keep it consistent, not just additive.
   documented v1 tradeoff. Tiling / super-resolution are deferred.
 - The pipeline always does a final feathered composite of the original person over the backend
   output, so the person is never altered by the generative model, even at the mask boundary.
+- **Measured and rejected for mask holes (#28) — do not re-try these without new evidence.** All
+  three were plausible, and all three are worse than the shipped `sam2_b` + `fill_holes`, judged on
+  `IMG_7170`'s glasses region (84.68% covered at baseline):
+  | Attempt | Result |
+  |---|---|
+  | Raise `max_hole_ratio` | **No effect at any value.** 0.005 already fills every enclosed region; the rest is one border-connected component. |
+  | `sam2_l` instead of `sam2_b` | **Much worse**: subject 48.74% → 33.90%, glasses region → 53.19%. Bigger is not better here. |
+  | Box + interior point prompts | **Worse and inconsistent**: glasses region 71.21% at 1 point, 51.20% at 3. Helped a different photo, hurt this one. |
+  Morphological closing gains +0.6pp on that region but thickens the whole silhouette and can weld
+  an arm to a torso — not obviously worth it. Untried: `multimask_output=True` with a selection
+  criterion, since the failure looks like mask *selection* rather than mask quality.
+- **A transparent lens is not a hole, it is a semi-transparent region** — exactly what a binary mask
+  cannot represent, and exactly what the deferred matting work is for. Some of #28 is the known
+  binary-mask gap resurfacing concretely, not a segmentation bug to tune away.
 - **Alpha matting is deferred, and the pixel-perfect bar is therefore not yet met.** Binary masks
   cannot represent semi-transparent hair. The trimap for a future matting stage comes free from the
   existing dilate/erode band. Until it lands, the README must say so rather than overclaim — see
@@ -215,6 +229,17 @@ in place as understanding changes — keep it consistent, not just additive.
   same 3px is negligible on a 4000px portrait. Defaults were tuned on a small image, which is the
   conservative direction, but scaling them with the image diagonal is unresolved — see #7, where the
   CLI exposes them.
+- **`fill_holes` is area-bounded, and that bound is the whole design.** Segmenters leave pinholes —
+  speckle across a sleeve, the interior of glasses — that the generated background paints through.
+  The obvious fix, "anything the frame border cannot reach is subject", is **wrong**: a hand on a hip
+  encloses genuine background that is equally unreachable, and filling it welds the arm to the torso.
+  So only regions below `max_hole_ratio` of the subject's area are filled. The threshold is a
+  *fraction*, not a pixel count, because the same 16 px is noise on a 40 MP photo and a real gap on a
+  thumbnail. Measured on a real photo: 1.5% of subject area recovered at IoU 0.985 against the raw
+  mask — surgical rather than a blob.
+- **Hole filling does not fix worn occluders.** Seatbelts and bag straps cross the silhouette and
+  reach the frame edge, so they are legitimately reachable and stay excluded. That half of #28 is
+  still open and needs a different approach.
 - **Score mask quality with boundary IoU, not plain IoU.** Plain IoU is dominated by the torso and
   barely moves when the hair is wrong, making it useless as a signal for the thing this project
   actually cares about.

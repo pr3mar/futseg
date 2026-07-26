@@ -234,3 +234,29 @@ def test_real_models_refine_a_real_photo() -> None:
     assert alpha.max() <= 1.0
     assert alpha.any(), "expected at least one person in bus.jpg"
     assert 0.01 < alpha.mean() < 0.6
+
+
+def test_pinholes_in_the_sam_mask_are_filled() -> None:
+    """SAM2 leaves speckle inside the subject; the generated background would
+    otherwise paint through it (#28)."""
+    detector = FakeDetector(boxes(1), [PERSON_CLASS])
+    holed = band(10, 50).copy()
+    holed[20, 20] = False
+    holed[24:26, 30:32] = False
+    sam = FakeSam(np.stack([holed]))
+
+    alpha = segmenter(detector, sam).segment(image())
+
+    assert alpha[20, 20] == 1.0
+    assert alpha[24:26, 30:32].all()
+
+
+def test_hole_filling_can_be_disabled() -> None:
+    detector = FakeDetector(boxes(1), [PERSON_CLASS])
+    holed = band(10, 50).copy()
+    holed[20, 20] = False
+    sam = FakeSam(np.stack([holed]))
+
+    alpha = segmenter(detector, sam, fill_mask_holes=False).segment(image())
+
+    assert alpha[20, 20] == 0.0

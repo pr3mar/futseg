@@ -575,3 +575,50 @@ details, no machine/hardware specifics, no credentials. This repo is public.
   Verified through the installed console script, not just `CliRunner`: `which futseg` resolves to
   `/opt/venv/bin/futseg`, `futseg segment` writes all five artefacts, `futseg run --backend
   composite` produces an image, a person-free photo exits 1, and a missing file exits 2.
+- **Mask hole filling (#28, part one).** `masking.fill_holes`, wired into both segmenters and on by
+  default. Raised to priority: high at the project owner's request after the FLUX.2 run made the
+  defect the visible limiter on output quality rather than a footnote.
+  Decisions:
+  - **The fill is bounded by area, and that bound is the design, not a tuning knob.** The obvious
+    implementation — flood-fill from the frame border, treat everything unreachable as subject — is
+    wrong: a hand on a hip encloses genuine background that the border cannot reach either, so
+    connectivity alone would weld the arm to the torso. Only regions below `max_hole_ratio` of the
+    subject's own area are filled. There is a dedicated test for the large-enclosed-gap case, which
+    is the one that fails a naive implementation.
+  - **The threshold is a fraction of subject area, not an absolute pixel count**, because the same
+    16 px is noise on a 40 MP photo and a real gap on a thumbnail. A test pins that the same hole
+    resolves differently at two image scales.
+  - **Applied after the resize**, so the threshold is measured at output scale rather than at
+    whatever resolution the model happened to return.
+  - **Soft alpha is preserved**: only pixels inside a filled hole are written, so the feathered
+    values the deferred matting stage will produce survive untouched. Tested.
+  Measured on the photographs that exposed the defect, not on synthetic shapes alone:
+  IMG_7170 recovered 15,757 px (1.501% of subject) at IoU 0.9852 against the raw mask; IMG_7053
+  recovered 274 px (0.042%) at IoU 0.9996. Surgical, not a blob — and confirmed visually: the
+  raised hand, the glasses lenses and the sleeve speckle fill, while the seatbelts and the gaps
+  between people stay open.
+  **Half of #28 remains open.** Worn occluders — seatbelts, bag straps — cross the silhouette and
+  reach the frame edge, so they are legitimately reachable and hole filling cannot touch them. That
+  needs a different approach and the issue stays open for it.
+  **Three follow-up attempts measured and rejected, recorded so they are not retried blind.**
+  Baseline for all of them: `sam2_b` + `fill_holes`, 84.68% coverage of `IMG_7170`'s glasses region,
+  which is where the face was reported half covered.
+  - **Raising `max_hole_ratio` does nothing at any value.** Counted the background components: 253
+    enclosed regions totalling 15,757 px, all already filled at the shipped 0.005, and 5
+    border-touching components totalling 1,088,627 px of which one is 1,086,553. The striped strip
+    and the lens interiors belong to that giant component — they reach the frame edge through thin
+    channels, so they are topologically outside the subject however enclosed they look, and
+    connectivity filling cannot reach them at any threshold.
+  - **`sam2_l` is worse than `sam2_b`**: subject 48.74% → 33.90%, glasses region 80.28% → 53.19%.
+    Upgrading the checkpoint was the obvious move and is measurably the wrong one.
+  - **Box + interior point prompts is worse and inconsistent.** Implemented with tests, measured,
+    reverted: glasses region 84.68% → 71.21% at one point, 51.20% at three. On another photo one
+    point *helped* (47.88% → 55.60%), which argues against shipping it more strongly than a uniform
+    regression would, because the effect is unpredictable per image. Reverted entirely rather than
+    left behind a disabled-by-default flag: dead code plus tests, carrying a technique that
+    measurably hurts, is worse than a recorded negative result.
+  Conclusion drawn rather than another knob: **a transparent lens is not a hole, it is a
+  semi-transparent region** — precisely what a binary mask cannot represent and what the deferred
+  matting work exists for. Part of #28 is the known binary-mask gap surfacing concretely rather than
+  a segmentation bug to tune away. Untried and still plausible: `multimask_output=True` with a
+  selection criterion, since the failure pattern looks like mask *selection*, not mask quality.
