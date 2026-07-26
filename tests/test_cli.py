@@ -51,18 +51,29 @@ def _stub_backends(monkeypatch: pytest.MonkeyPatch):
     """Replace the factories so no test downloads or loads weights."""
     built: dict = {}
 
-    def fake_segmenter(quality, device):
-        built["quality"] = quality
-        built["segmenter_device"] = device
+    def fake_segmenter(quality, device, confidence=0.25, imgsz=1280, fill_holes=True, **kwargs):
+        built.update(
+            quality=quality,
+            segmenter_device=device,
+            confidence=confidence,
+            imgsz=imgsz,
+            fill_holes=fill_holes,
+        )
         return StubSegmenter()
 
-    def fake_inpainter(backend, device, prompt, model, steps=None, guidance_scale=None, **kwargs):
-        built["backend"] = backend
-        built["inpainter_device"] = device
-        built["prompt"] = prompt
-        built["model"] = model
-        built["steps"] = steps
-        built["guidance_scale"] = guidance_scale
+    def fake_inpainter(
+        backend, device, prompt, model,
+        steps=None, guidance_scale=None, strength=None, **kwargs,
+    ):
+        built.update(
+            backend=backend,
+            inpainter_device=device,
+            prompt=prompt,
+            model=model,
+            steps=steps,
+            guidance_scale=guidance_scale,
+            strength=strength,
+        )
         return StubInpainter()
 
     monkeypatch.setattr(cli, "_build_segmenter", fake_segmenter)
@@ -134,7 +145,9 @@ def test_segment_exits_1_when_no_person_is_found(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """An empty mask is never reported as success."""
-    monkeypatch.setattr(cli, "_build_segmenter", lambda quality, device: StubSegmenter(0.0))
+    monkeypatch.setattr(
+        cli, "_build_segmenter", lambda *a, **k: StubSegmenter(0.0)
+    )
     image = photo_at(tmp_path / "empty.jpg")
 
     result = runner.invoke(cli.app, ["segment", str(image), "--out", str(tmp_path / "out")])
@@ -233,7 +246,9 @@ def test_run_can_select_the_composite_backend(tmp_path: Path, _stub_backends) ->
 def test_run_exits_1_when_no_person_is_found(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(cli, "_build_segmenter", lambda quality, device: StubSegmenter(0.0))
+    monkeypatch.setattr(
+        cli, "_build_segmenter", lambda *a, **k: StubSegmenter(0.0)
+    )
 
     result = runner.invoke(
         cli.app,
@@ -286,7 +301,9 @@ def test_weights_dir_overrides_the_cache_location(
     assert str(weights) in os.environ["HF_HOME"]
 
 
-def test_run_leaves_sampler_settings_to_the_model_by_default(tmp_path: Path, _stub_backends) -> None:
+def test_run_leaves_sampler_settings_to_the_model_by_default(
+    tmp_path: Path, _stub_backends
+) -> None:
     """None means "whatever this checkpoint wants" (#33), not a global number."""
     runner.invoke(
         cli.app,
@@ -307,3 +324,86 @@ def test_run_passes_explicit_sampler_overrides_through(tmp_path: Path, _stub_bac
 
     assert _stub_backends["steps"] == 9
     assert _stub_backends["guidance_scale"] == 2.5
+
+
+# --------------------------------------------------------------------------- #
+# full parameter surface (#37)
+# --------------------------------------------------------------------------- #
+
+
+def test_run_can_tune_the_seam(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The mask offsets decide seam quality, and `run` is what composites the
+    finished image — tuning them only on `segment` is backwards.
+
+    Fails if `run` stops forwarding them to the pipeline.
+    """
+    seen: dict = {}
+    real_run = cli.pipeline.run
+
+    def spy(image, **kwargs):
+        seen.update(kwargs)
+        return real_run(image, **kwargs)
+
+    monkeypatch.setattr(cli.pipeline, "run", spy)
+
+    runner.invoke(
+        cli.app,
+        ["run", str(photo_at(tmp_path / "s.jpg")), "--prompt", "p",
+         "--out", str(tmp_path / "o.png"),
+         "--inpaint-grow", "20", "--composite-shrink", "5", "--feather", "8"],
+    )
+
+    assert seen["inpaint_grow"] == 20
+    assert seen["composite_shrink"] == 5
+    assert seen["feather_radius"] == 8
+
+
+def test_run_rejects_seam_settings_that_would_leave_a_halo(tmp_path: Path) -> None:
+    """Same guard `segment` already has; a traceback here would be worse."""
+    result = runner.invoke(
+        cli.app,
+        ["run", str(photo_at(tmp_path / "s.jpg")), "--prompt", "p",
+         "--out", str(tmp_path / "o.png"),
+         "--inpaint-grow", "2", "--composite-shrink", "2", "--feather", "4"],
+    )
+
+    assert result.exit_code == 2
+    assert "inpaint-grow" in result.stderr
+
+
+@pytest.mark.parametrize("command", ["run", "segment"])
+def test_segmentation_options_apply_to_both_commands(
+    command: str, tmp_path: Path, _stub_backends
+) -> None:
+    """Detection sensitivity is not a property of which command you ran."""
+    args = [command, str(photo_at(tmp_path / "s.jpg"))]
+    if command == "run":
+        args += ["--prompt", "p", "--out", str(tmp_path / "o.png")]
+    else:
+        args += ["--out", str(tmp_path / "o")]
+    args += ["--confidence", "0.4", "--imgsz", "960", "--no-fill-holes"]
+
+    result = runner.invoke(cli.app, args)
+
+    assert result.exit_code == 0, result.stderr
+    assert _stub_backends["confidence"] == 0.4
+    assert _stub_backends["imgsz"] == 960
+    assert _stub_backends["fill_holes"] is False
+
+
+def test_run_can_set_diffusion_strength(tmp_path: Path, _stub_backends) -> None:
+    runner.invoke(
+        cli.app,
+        ["run", str(photo_at(tmp_path / "s.jpg")), "--prompt", "p",
+         "--out", str(tmp_path / "o.png"), "--strength", "0.8"],
+    )
+
+    assert _stub_backends["strength"] == 0.8
+
+
+def test_hole_filling_is_on_by_default(tmp_path: Path, _stub_backends) -> None:
+    runner.invoke(
+        cli.app, ["segment", str(photo_at(tmp_path / "s.jpg")), "--out", str(tmp_path / "o")]
+    )
+
+    assert _stub_backends["fill_holes"] is True
