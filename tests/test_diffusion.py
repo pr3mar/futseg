@@ -278,3 +278,74 @@ def test_weights_resolve_through_the_cache_not_the_working_directory(
 
     assert backend.cache_dir.is_absolute()
     assert tmp_path in backend.cache_dir.parents or backend.cache_dir == tmp_path
+
+
+# --------------------------------------------------------------------------- #
+# per-model sampler defaults (#33)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("key", sorted(REGISTRY))
+def test_every_spec_declares_sampler_defaults(key: str) -> None:
+    spec = REGISTRY[key]
+    assert spec.steps >= 1, key
+    assert spec.guidance_scale >= 0.0, key
+    assert 0.0 < spec.strength <= 1.0, key
+
+
+def test_the_distilled_default_uses_the_step_count_from_its_model_card() -> None:
+    """FLUX.2 klein is step-distilled: its card asks for 4 steps and guidance 1.0.
+
+    Running it at a generic 28 steps is seven times the work for nothing, which
+    is what shipped before this. Fails if someone restores a global default.
+    """
+    spec = REGISTRY["flux2-klein"]
+
+    assert spec.steps == 4
+    assert spec.guidance_scale == 1.0
+
+
+def test_non_distilled_models_keep_a_conventional_step_count() -> None:
+    """The distilled value must not leak onto models that need real steps."""
+    for key in ("sdxl-inpaint", "sd15-inpaint"):
+        assert REGISTRY[key].steps >= 20, key
+
+
+def test_the_backend_takes_its_settings_from_the_selected_spec() -> None:
+    pipeline = FakePipeline()
+
+    DiffusionInpainter(device="cpu", prompt="p", model="flux2-klein", pipeline=pipeline).inpaint(
+        photo(), mask()
+    )
+
+    call = pipeline.calls[0]
+    assert call["num_inference_steps"] == 4
+    assert call["guidance_scale"] == 1.0
+
+
+def test_switching_model_switches_the_defaults() -> None:
+    """The whole point: one global default cannot be right for both."""
+    klein, sdxl = FakePipeline(), FakePipeline()
+
+    DiffusionInpainter(device="cpu", prompt="p", model="flux2-klein", pipeline=klein).inpaint(
+        photo(), mask()
+    )
+    DiffusionInpainter(device="cpu", prompt="p", model="sdxl-inpaint", pipeline=sdxl).inpaint(
+        photo(), mask()
+    )
+
+    assert klein.calls[0]["num_inference_steps"] != sdxl.calls[0]["num_inference_steps"]
+
+
+def test_explicit_arguments_still_win() -> None:
+    """`--steps` has to remain useful for experimenting."""
+    pipeline = FakePipeline()
+
+    DiffusionInpainter(
+        device="cpu", prompt="p", model="flux2-klein", steps=12, guidance_scale=3.0,
+        pipeline=pipeline,
+    ).inpaint(photo(), mask())
+
+    call = pipeline.calls[0]
+    assert call["num_inference_steps"] == 12
+    assert call["guidance_scale"] == 3.0
