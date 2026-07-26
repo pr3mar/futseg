@@ -165,6 +165,15 @@ in place as understanding changes — keep it consistent, not just additive.
 - **Slow tests use `ultralytics.utils.ASSETS / "bus.jpg"`.** It ships inside the installed package
   and contains people, so real-model tests need no committed image fixture and raise no licensing
   or privacy question for a public repo.
+- **SAM2's `result.boxes.cls` is a prompt ordinal, not a COCO class.** It comes back as
+  `[0., 1., 2., ...]` — one per box you prompted with. Filtering it against `PERSON_CLASS`, which is
+  the correct pattern on *detection* output in `yolo.py`, would silently keep only the first person.
+  Person filtering belongs before the prompt, on the detector's output. `test_refined.py` pins this.
+- **SAM2 returns `masks.data` as `dtype=bool`**, unlike YOLO11-seg's float masks. The `Segmenter`
+  protocol requires float32, so `refined.py` converts explicitly.
+- **`SAM("sam2_b.pt")` downloads into the current working directory** exactly like `YOLO(...)` does.
+  Observed the hard way: a probe with a bare filename dropped 78 MB into the repo root. Always pass
+  an absolute path from `weights_dir()`.
 - **Score mask quality with boundary IoU, not plain IoU.** Plain IoU is dominated by the torso and
   barely moves when the hair is wrong, making it useless as a signal for the thing this project
   actually cares about.
